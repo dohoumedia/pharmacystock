@@ -1,10 +1,17 @@
 # AGENTS.md — DohouLabs Pharmacy Stock
 
 ## Mission
-Build a production-grade bilingual pharmacy operations SaaS for Web, iOS and Android.
+Build a production-grade bilingual pharmacy operations SaaS for Web, iOS and Android, with a responsive installable PWA and durable offline-first behavior.
+
+## Absolute production target
+- Repository: `dohoumedia/pharmacystock`
+- Production branch: `main`
+- Supabase project name: `Pharmacy Stock`
+- Supabase project ref: `jeravdvssuzbthkxfvjy`
+- Before any Supabase query, migration, advisor check, branch operation, or generated type operation, verify the target resolves to `Pharmacy Stock` with ref `jeravdvssuzbthkxfvjy`. If not, stop. Never operate on another Supabase project for this repository.
 
 ## Read before coding
-Consult in this order: `AGENTS.md` → PRD → functional requirements → user stories/business rules → UX → security/RLS → QA. If specifications materially conflict, document the conflict and stop that portion rather than guessing.
+Consult in this order: `AGENTS.md` → `docs/CODEX_PRODUCTION_HANDOFF.md` → `docs/UI_UX_BLUEPRINT.md` → `docs/OFFLINE_FIRST_ARCHITECTURE.md` → PRD → functional requirements → user stories/business rules → security/RLS → QA. If specifications materially conflict, document the conflict and stop that portion rather than guessing.
 
 ## Priority
 P0 core first. P1 network only after P0 is stable. P2 intelligence only after sufficient operational data exists.
@@ -18,22 +25,22 @@ Prefer UI → domain service → data/API layer → Supabase/PostgreSQL. Critica
 - Database RLS is mandatory. Frontend filtering is never authorization.
 - Pharmacy A must never access Pharmacy B's private data.
 - Never ship a Supabase service-role key to browser/mobile clients.
-- Privileged operations execute only in trusted server environments.
+- Privileged operations execute only in trusted database/server boundaries.
 
 ## Inventory integrity
 - `inventory_movements` is the immutable historical source of truth.
-- `inventory_balances` is an optimized current-state projection.
-- Never silently modify stock without a movement.
+- `inventory_balances` is derived/read-only current state.
+- Never directly overwrite stock quantities or silently modify stock without a movement.
 - Corrections use compensating movements, not history rewriting.
 - Negative inventory is prohibited by default.
 - Concurrency controls must prevent two transactions from consuming/reserving the same final unit.
 - Each physical batch/lot has independent expiry, quantity, status and traceability.
 
 ## Batch safety
-Expired, recalled and quarantined batches cannot be sold. This must be enforced below the UI layer. FEFO may select/recommend the earliest-expiring eligible batch only.
+Expired, recalled, disposed and quarantined batches cannot be sold or transferred as available stock. This must be enforced below the UI layer. FEFO may select/recommend the earliest-expiring eligible batch only.
 
 ## Financial integrity
-Completed financial transactions are not hard-deleted. Use refunds/reversals/cancellations as appropriate. Sales and payments are separate concepts. Financial and inventory-changing operations must be idempotent and retry-safe.
+Completed financial transactions are not hard-deleted. Use refunds/reversals/cancellations as appropriate. Sales and payments are separate concepts. POS pricing is server-authoritative. Financial and inventory-changing operations must be idempotent and retry-safe.
 
 ## Audit
 Sensitive actions require append-oriented audit events, including stock adjustments, disposal, refunds, price/permission changes, employee suspension, exchange approvals, transfer dispatch/receipt and security-sensitive configuration.
@@ -58,17 +65,31 @@ English and French are first-class. No hard-coded user-facing strings. Internal 
 ## Currency
 Do not hard-code FCFA into business logic. Store ISO currency codes such as XOF and configure presentation per country.
 
-## Offline/idempotency
-Do not pretend cached data is live. Clearly indicate offline/stale states. Sensitive queued mutations require idempotency keys and deterministic reconciliation. Never silently use last-write-wins for inventory-critical conflicts.
+## Offline-first and PWA
+- Web must be responsive and installable as a PWA with manifest, icons, standalone mode, service worker and cached app shell.
+- Previously synchronized operational/reference data remains readable offline where safe.
+- Use a durable local database/cache suitable for Web, iOS and Android rather than volatile component state.
+- Queue safe writes in a durable outbox. Every queued mutation gets a stable idempotency key.
+- Never pretend cached data is live. Show `Offline`, `Syncing`, `Synced`, pending-operation count, stale timestamps and conflicts.
+- Stock-affecting offline operations are queued intents, not local edits to authoritative stock.
+- Offline POS may use the last trusted synchronized stock snapshot and local provisional reservations, but the receipt/sale is visibly `Pending sync` until accepted by the server.
+- Reconnect replay is deterministic and retry-safe. Never use last-write-wins for inventory-critical conflicts.
+- If the server rejects a queued inventory transaction because stock changed elsewhere, preserve the local record, mark it conflicted, and require explicit resolution. Never rewrite the server ledger.
 
 ## Errors and UI states
-Every data-driven screen must handle Loading, Empty, Success and Error states where applicable. Authorization is enforced server/database-side even when controls are hidden in the UI.
+Every data-driven screen must handle Loading, Empty, Success, Error, Offline, Stale and Sync-conflict states where applicable. Authorization is enforced server/database-side even when controls are hidden in the UI.
+
+## Responsive and native UX
+- Web: use desktop/tablet/mobile breakpoints, keyboard-friendly workflows, wider tables and persistent navigation where space permits.
+- iOS/Android: touch-first navigation, comfortable hit targets, scan-first operations and native-feeling presentation.
+- Do not merely shrink desktop layouts onto phones.
+- Core domain behavior must remain shared even when presentation differs by platform.
 
 ## Accessibility
 Support keyboard navigation where applicable, screen-reader semantics, sufficient touch targets, scalable text and status communication that does not rely on color alone.
 
 ## Tests
-Applicable unit, integration, RLS/security, localization and critical E2E tests accompany implementation. Tenant isolation, inventory integrity, expired-stock protection, idempotency, privilege escalation, exchange integrity and Medicine Locator privacy failures are release blockers.
+Applicable unit, integration, RLS/security, localization, offline-sync and critical E2E tests accompany implementation. Tenant isolation, inventory integrity, expired-stock protection, idempotency, privilege escalation, transfer integrity and offline replay failures are release blockers.
 
 ## Migrations and seed data
 Never rewrite applied production migration history. Create new migrations. Development/test seeds must include at least two organizations so isolation is testable, plus active, near-expiry, expired, recalled and quarantined batches.
@@ -82,11 +103,23 @@ Before adding a dependency, check whether the stack already provides the capabil
 ## Code quality
 Use TypeScript strictness, focused modules, explicit types, reusable domain logic and predictable naming. Avoid giant components, unexplained magic numbers, business logic in UI, unnecessary `any`, and duplicated platform business rules.
 
+## Quality gates
+Before work is considered complete, run and pass:
+- `npm install`
+- `npx expo install --check`
+- `npm run typecheck`
+- `npm run lint`
+- `npm test`
+- `npx expo-doctor`
+- Web export
+- relevant SQL regression tests
+- Supabase Security Advisor with zero security lints
+
 ## Documentation and traceability
-Behavior changes must update relevant requirements, API/schema docs, tests and translations. Significant implementation work references requirement IDs.
+Behavior changes must update relevant requirements, API/schema docs, tests and translations. Significant implementation work references requirement IDs where available.
 
 ## When Codex must stop
 Stop and report rather than guess when specifications conflict, regulatory assumptions are required, a migration risks data loss, security is unclear, clinical behavior is requested without specification, an external provider decision is required, or scope materially expands.
 
 ## Definition of Done
-A feature is done only when applicable requirements and acceptance criteria are satisfied; permissions and RLS are enforced; audit behavior is implemented; EN/FR are complete; loading/empty/error states exist; Web/iOS/Android behavior is verified as applicable; tests pass; secrets are safe; and documentation is updated.
+A feature is done only when applicable requirements and acceptance criteria are satisfied; permissions and RLS are enforced; audit behavior is implemented; EN/FR are complete; loading/empty/error/offline states exist; Web/iOS/Android behavior is verified as applicable; tests pass; secrets are safe; and documentation is updated.
