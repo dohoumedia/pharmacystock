@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 export type PosProduct = { id: string; name: string; generic_name: string | null; brand_name: string | null; sku: string | null };
 export type PosBatch = { id: string; product_id: string; lot_number: string; expiry_date: string; selling_price: number | null; status: string };
-export type Sale = { id: string; organization_id: string; branch_id: string; sale_number: string; status: 'COMPLETED'|'PARTIALLY_REFUNDED'|'REFUNDED'|'VOIDED'; subtotal: number; discount_total: number; total_amount: number; currency_code: string; notes: string | null; completed_at: string; created_by: string; created_at: string };
+export type Sale = { id: string; organization_id: string; branch_id: string; customer_id: string | null; sale_number: string; status: 'COMPLETED'|'PARTIALLY_REFUNDED'|'REFUNDED'|'VOIDED'; subtotal: number; discount_total: number; total_amount: number; currency_code: string; notes: string | null; completed_at: string; created_by: string; created_at: string };
 export type SaleItem = { id: string; organization_id: string; sale_id: string; product_id: string; batch_id: string; quantity: number; unit_price: number; line_total: number; inventory_movement_id: string; created_at: string };
 export type Payment = { id: string; organization_id: string; branch_id: string; sale_id: string; method: 'CASH'|'CARD'|'MOBILE_MONEY'|'BANK_TRANSFER'|'OTHER'; amount: number; provider: string | null; external_reference: string | null; status: 'RECORDED'|'REVERSED'; created_at: string };
 export type Refund = { id: string; organization_id: string; branch_id: string; sale_id: string; refund_number: string; reason: string; amount: number; created_at: string };
@@ -20,7 +20,7 @@ type SalesDatabase = { public: { Tables: {
   sale_refunds: { Row: Refund; Insert: never; Update: never; Relationships: [] };
 }; Views: Record<string, never>; Functions: {
   quote_sale: { Args: { p_organization_id: string; p_branch_id: string; p_lines: CartLine[] }; Returns: SaleQuote };
-  complete_sale: { Args: { p_organization_id: string; p_branch_id: string; p_sale_number: string; p_lines: CartLine[]; p_payments: PaymentInput[]; p_idempotency_key: string; p_notes?: string | null }; Returns: string };
+  complete_sale_with_customer: { Args: { p_organization_id: string; p_branch_id: string; p_sale_number: string; p_lines: CartLine[]; p_payments: PaymentInput[]; p_idempotency_key: string; p_notes?: string | null; p_customer_id?: string | null }; Returns: string };
   refund_sale: { Args: { p_sale_id: string; p_refund_number: string; p_items: { sale_item_id: string; quantity: number }[]; p_idempotency_key: string; p_reason: string }; Returns: string };
 }; Enums: Record<string, never>; CompositeTypes: Record<string, never> } };
 
@@ -47,8 +47,8 @@ export async function quoteSale(organizationId: string, branchId: string, lines:
   return data;
 }
 
-export async function completeSale(input: { organizationId: string; branchId: string; saleNumber: string; lines: CartLine[]; payments: PaymentInput[]; idempotencyKey: string; notes?: string }): Promise<string> {
-  const { data, error } = await db.rpc('complete_sale', { p_organization_id: input.organizationId, p_branch_id: input.branchId, p_sale_number: input.saleNumber, p_lines: input.lines, p_payments: input.payments, p_idempotency_key: input.idempotencyKey, p_notes: input.notes?.trim() || null });
+export async function completeSale(input: { organizationId: string; branchId: string; saleNumber: string; lines: CartLine[]; payments: PaymentInput[]; idempotencyKey: string; notes?: string; customerId?: string | null }): Promise<string> {
+  const { data, error } = await db.rpc('complete_sale_with_customer', { p_organization_id: input.organizationId, p_branch_id: input.branchId, p_sale_number: input.saleNumber, p_lines: input.lines, p_payments: input.payments, p_idempotency_key: input.idempotencyKey, p_notes: input.notes?.trim() || null, p_customer_id: input.customerId ?? null });
   if (error) throw error;
   return data;
 }

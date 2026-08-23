@@ -3,6 +3,8 @@ import { initReactI18next } from 'react-i18next';
 import { getLocales } from 'expo-localization';
 import en from './en.json';
 import fr from './fr.json';
+import sprint7En from './sprint7.en.json';
+import sprint7Fr from './sprint7.fr.json';
 
 const deviceLanguage = getLocales()[0]?.languageCode === 'en' ? 'en' : 'fr';
 
@@ -14,8 +16,8 @@ void i18n.use(initReactI18next).init({
   fallbackLng: 'fr',
   supportedLngs: ['en', 'fr'],
   resources: {
-    en: { translation: en },
-    fr: { translation: fr },
+    en: { translation: { ...en, ...sprint7En } },
+    fr: { translation: { ...fr, ...sprint7Fr } },
   },
   interpolation: {
     escapeValue: false,
