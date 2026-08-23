@@ -64,32 +64,10 @@ export default function HomeScreen() {
         {!authLoading && !user ? (
           <View style={styles.card}>
             <Text style={styles.title}>{t('auth.signIn')}</Text>
-            <TextInput
-              accessibilityLabel={t('auth.email')}
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              onChangeText={setEmail}
-              placeholder={t('auth.email')}
-              style={styles.input}
-              value={email}
-            />
-            <TextInput
-              accessibilityLabel={t('auth.password')}
-              autoCapitalize="none"
-              onChangeText={setPassword}
-              placeholder={t('auth.password')}
-              secureTextEntry
-              style={styles.input}
-              value={password}
-            />
+            <TextInput accessibilityLabel={t('auth.email')} autoCapitalize="none" autoComplete="email" keyboardType="email-address" onChangeText={setEmail} placeholder={t('auth.email')} style={styles.input} value={email} />
+            <TextInput accessibilityLabel={t('auth.password')} autoCapitalize="none" onChangeText={setPassword} placeholder={t('auth.password')} secureTextEntry style={styles.input} value={password} />
             {authError ? <Text style={styles.error}>{authError}</Text> : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={authBusy || !email || !password}
-              onPress={() => void submitSignIn()}
-              style={[styles.primaryButton, (authBusy || !email || !password) && styles.disabled]}
-            >
+            <Pressable accessibilityRole="button" disabled={authBusy || !email || !password} onPress={() => void submitSignIn()} style={[styles.primaryButton, (authBusy || !email || !password) && styles.disabled]}>
               <Text style={styles.primaryButtonText}>{authBusy ? t('common.loading') : t('auth.signIn')}</Text>
             </Pressable>
           </View>
@@ -109,18 +87,12 @@ export default function HomeScreen() {
               <Text style={styles.title}>{t('organization.title')}</Text>
               {organizationLoading ? <Text style={styles.body}>{t('common.loading')}</Text> : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
-              {!organizationLoading && organizations.length === 0 ? (
-                <Text style={styles.body}>{t('organization.noOrganization')}</Text>
-              ) : null}
+              {!organizationLoading && organizations.length === 0 ? <Text style={styles.body}>{t('organization.noOrganization')}</Text> : null}
 
               {organizations.length > 1 ? (
                 <View style={styles.chips}>
                   {organizations.map((item) => (
-                    <Pressable
-                      key={item.id}
-                      onPress={() => setOrganizationId(item.id)}
-                      style={[styles.chip, item.id === organization?.id && styles.chipSelected]}
-                    >
+                    <Pressable key={item.id} onPress={() => setOrganizationId(item.id)} style={[styles.chip, item.id === organization?.id && styles.chipSelected]}>
                       <Text style={[styles.chipText, item.id === organization?.id && styles.chipTextSelected]}>{item.name}</Text>
                     </Pressable>
                   ))}
@@ -130,36 +102,28 @@ export default function HomeScreen() {
               {organization ? (
                 <>
                   <Text style={styles.organizationName}>{organization.name}</Text>
-                  <Text style={styles.meta}>
-                    {t('organization.role')}: {role ? (i18n.language === 'fr' ? role.name_fr : role.name_en) : t('organization.noRole')}
-                  </Text>
+                  <Text style={styles.meta}>{t('organization.role')}: {role ? (i18n.language === 'fr' ? role.name_fr : role.name_en) : t('organization.noRole')}</Text>
                   <Text style={styles.sectionLabel}>{t('organization.branch')}</Text>
                   <View style={styles.chips}>
                     {branches.map((item) => (
-                      <Pressable
-                        key={item.id}
-                        onPress={() => setBranchId(item.id)}
-                        style={[styles.chip, item.id === branch?.id && styles.chipSelected]}
-                      >
+                      <Pressable key={item.id} onPress={() => setBranchId(item.id)} style={[styles.chip, item.id === branch?.id && styles.chipSelected]}>
                         <Text style={[styles.chipText, item.id === branch?.id && styles.chipTextSelected]}>{item.name}</Text>
                       </Pressable>
                     ))}
                   </View>
                   <Text style={styles.meta}>{t('organization.permissions')}: {permissions.length}</Text>
                   <View style={styles.actions}>
+                    {can('inventory.read') ? (
+                      <Link href="/products" asChild><Pressable accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>{t('catalog.manageProducts')}</Text></Pressable></Link>
+                    ) : null}
+                    {can('inventory.read') ? (
+                      <Link href="/batches" asChild><Pressable accessibilityRole="button" style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('catalog.manageBatches')}</Text></Pressable></Link>
+                    ) : null}
                     {can('staff.manage') ? (
-                      <Link href="/staff" asChild>
-                        <Pressable accessibilityRole="button" style={styles.primaryButton}>
-                          <Text style={styles.primaryButtonText}>{t('organization.manageStaff')}</Text>
-                        </Pressable>
-                      </Link>
+                      <Link href="/staff" asChild><Pressable accessibilityRole="button" style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('organization.manageStaff')}</Text></Pressable></Link>
                     ) : null}
                     {can('branch.manage') ? (
-                      <Link href="/branches" asChild>
-                        <Pressable accessibilityRole="button" style={styles.secondaryButton}>
-                          <Text style={styles.secondaryButtonText}>{t('organization.manageBranches')}</Text>
-                        </Pressable>
-                      </Link>
+                      <Link href="/branches" asChild><Pressable accessibilityRole="button" style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('organization.manageBranches')}</Text></Pressable></Link>
                     ) : null}
                   </View>
                 </>
