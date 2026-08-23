@@ -39,6 +39,46 @@
       "operations": "More",
       "manage": "Manage",
       "noContext": "Select a pharmacy and branch"
+    },
+    "readModel": {
+      "offline": "Offline · cached operational data",
+      "syncing": "Refreshing from the pharmacy server…",
+      "stale": "Cached data may be stale",
+      "synced": "Inventory data synchronized",
+      "lastSynced": "Last synchronized: {{date}}",
+      "noCachedData": "No synchronized data is available on this device.",
+      "never": "Never"
+    },
+    "inventoryView": {
+      "search": "Search product or lot number",
+      "allStatuses": "All statuses",
+      "status": "Status",
+      "available": "Available",
+      "reserved": "Reserved",
+      "notSellable": "Not sellable",
+      "sellable": "Eligible for server FEFO selection",
+      "ledgerAuthority": "Balances are a read-only projection. The immutable movement ledger and server rules remain authoritative.",
+      "offlineReadOnly": "Inventory changes and stock counts require an online server check.",
+      "noFilteredStock": "No stock matches these filters.",
+      "refreshFailed": "Server refresh failed. Showing the last synchronized data when available.",
+      "cannotRead": "Your role does not allow inventory access."
+    },
+    "batchView": {
+      "search": "Search product or lot number",
+      "allStatuses": "All statuses",
+      "offlineReadOnly": "Batch creation requires an online server authorization check.",
+      "safetyNote": "Expired, quarantined, recalled, depleted, and disposed batches are not sellable. Server FEFO rules remain authoritative.",
+      "noFilteredBatches": "No batches match these filters.",
+      "refreshFailed": "Server refresh failed. Showing the last synchronized batches when available."
+    },
+    "batchStatus": {
+      "active": "Active",
+      "quarantined": "Quarantined",
+      "recalled": "Recalled",
+      "expired": "Expired",
+      "depleted": "Depleted",
+      "disposed": "Disposed",
+      "unknown": "Unavailable"
     }
   }
 }

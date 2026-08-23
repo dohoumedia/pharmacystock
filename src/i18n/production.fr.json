@@ -39,6 +39,46 @@
       "operations": "Plus",
       "manage": "Gestion",
       "noContext": "Sélectionnez une pharmacie et une agence"
+    },
+    "readModel": {
+      "offline": "Hors ligne · données opérationnelles en cache",
+      "syncing": "Actualisation depuis le serveur de la pharmacie…",
+      "stale": "Les données en cache peuvent être anciennes",
+      "synced": "Données de stock synchronisées",
+      "lastSynced": "Dernière synchronisation : {{date}}",
+      "noCachedData": "Aucune donnée synchronisée n’est disponible sur cet appareil.",
+      "never": "Jamais"
+    },
+    "inventoryView": {
+      "search": "Rechercher un produit ou un numéro de lot",
+      "allStatuses": "Tous les statuts",
+      "status": "Statut",
+      "available": "Disponible",
+      "reserved": "Réservé",
+      "notSellable": "Non vendable",
+      "sellable": "Éligible à la sélection FEFO du serveur",
+      "ledgerAuthority": "Les soldes sont une projection en lecture seule. Le grand livre immuable et les règles du serveur restent la référence.",
+      "offlineReadOnly": "Les modifications du stock et les inventaires physiques nécessitent un contrôle du serveur en ligne.",
+      "noFilteredStock": "Aucun stock ne correspond à ces filtres.",
+      "refreshFailed": "L’actualisation du serveur a échoué. Les dernières données synchronisées sont affichées si elles existent.",
+      "cannotRead": "Votre rôle ne permet pas d’accéder au stock."
+    },
+    "batchView": {
+      "search": "Rechercher un produit ou un numéro de lot",
+      "allStatuses": "Tous les statuts",
+      "offlineReadOnly": "La création d’un lot nécessite un contrôle d’autorisation du serveur en ligne.",
+      "safetyNote": "Les lots périmés, en quarantaine, rappelés, épuisés et mis au rebut ne sont pas vendables. Les règles FEFO du serveur restent la référence.",
+      "noFilteredBatches": "Aucun lot ne correspond à ces filtres.",
+      "refreshFailed": "L’actualisation du serveur a échoué. Les derniers lots synchronisés sont affichés si disponibles."
+    },
+    "batchStatus": {
+      "active": "Actif",
+      "quarantined": "En quarantaine",
+      "recalled": "Rappelé",
+      "expired": "Périmé",
+      "depleted": "Épuisé",
+      "disposed": "Mis au rebut",
+      "unknown": "Indisponible"
     }
   }
 }
