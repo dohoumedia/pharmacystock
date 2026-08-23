@@ -2,7 +2,7 @@ import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxStore, createOutboxId, type OutboxOperation } from './outbox';
 import { SyncCoordinator, type ReplayResult } from './sync';
-import { completeSale, type CartLine, type PaymentInput, type SaleQuote } from '@/services/sales';
+import { completeSale, type CartLine, type PaymentInput, type SaleQuote } from '../services/sales';
 
 export type OfflineSalePayload = {
   organizationId: string;
