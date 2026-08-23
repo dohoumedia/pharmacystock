@@ -25,6 +25,7 @@ type PurchaseOrder = {
   expected_at: string | null;
   notes: string | null;
   created_by: string;
+  idempotency_key: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -51,6 +52,7 @@ type PurchaseReceipt = {
   received_at: string;
   received_by: string;
   notes: string | null;
+  idempotency_key: string | null;
   created_at: string;
 };
 
@@ -63,22 +65,25 @@ type PurchasingDatabase = {
         Update: Partial<Omit<Supplier, 'id' | 'organization_id' | 'created_at'>>;
         Relationships: [];
       };
-      purchase_orders: {
-        Row: PurchaseOrder;
-        Insert: Omit<PurchaseOrder, 'id' | 'created_by' | 'created_at' | 'updated_at'> & { id?: string; created_by?: string; created_at?: string; updated_at?: string };
-        Update: Partial<Omit<PurchaseOrder, 'id' | 'organization_id' | 'created_by' | 'created_at'>>;
-        Relationships: [];
-      };
-      purchase_order_lines: {
-        Row: PurchaseOrderLine;
-        Insert: Omit<PurchaseOrderLine, 'id' | 'received_quantity' | 'created_at' | 'updated_at'> & { id?: string; received_quantity?: number; created_at?: string; updated_at?: string };
-        Update: Partial<Omit<PurchaseOrderLine, 'id' | 'organization_id' | 'purchase_order_id' | 'created_at'>>;
-        Relationships: [];
-      };
+      purchase_orders: { Row: PurchaseOrder; Insert: never; Update: never; Relationships: [] };
+      purchase_order_lines: { Row: PurchaseOrderLine; Insert: never; Update: never; Relationships: [] };
       purchase_receipts: { Row: PurchaseReceipt; Insert: never; Update: never; Relationships: [] };
     };
     Views: Record<string, never>;
     Functions: {
+      create_purchase_order: {
+        Args: {
+          p_organization_id: string;
+          p_branch_id: string;
+          p_supplier_id: string;
+          p_po_number: string;
+          p_expected_at?: string | null;
+          p_notes?: string | null;
+          p_lines?: unknown;
+          p_idempotency_key?: string | null;
+        };
+        Returns: string;
+      };
       receive_purchase_order: {
         Args: {
           p_purchase_order_id: string;
@@ -86,6 +91,7 @@ type PurchasingDatabase = {
           p_supplier_invoice_number?: string | null;
           p_lines?: unknown;
           p_notes?: string | null;
+          p_idempotency_key?: string | null;
         };
         Returns: string;
       };
@@ -99,6 +105,10 @@ const db = supabase as unknown as SupabaseClient<PurchasingDatabase>;
 
 export type PurchaseOrderWithSupplier = PurchaseOrder & { supplier_name: string };
 export type PurchaseOrderLineWithProduct = PurchaseOrderLine & { product_name: string };
+
+function normalizedOperationKey(prefix: string, scope: string, reference: string): string {
+  return `${prefix}:${scope}:${reference.trim().toLowerCase()}`;
+}
 
 export async function loadSuppliers(organizationId: string): Promise<Supplier[]> {
   const { data, error } = await db.from('suppliers').select('*').eq('organization_id', organizationId).order('name');
@@ -146,29 +156,24 @@ export async function createPurchaseOrder(input: {
   notes?: string;
   lines: { productId: string; quantity: number; unitCost?: number | null }[];
 }): Promise<string> {
-  const { data: order, error } = await db.from('purchase_orders').insert({
-    organization_id: input.organizationId,
-    branch_id: input.branchId,
-    supplier_id: input.supplierId,
-    po_number: input.poNumber.trim(),
-    status: 'ordered',
-    ordered_at: new Date().toISOString(),
-    expected_at: input.expectedAt?.trim() || null,
-    notes: input.notes?.trim() || null,
-  }).select('*').single();
-  if (error) throw error;
+  const payload = input.lines
+    .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0)
+    .map((line) => ({ product_id: line.productId, quantity: line.quantity, unit_cost: line.unitCost ?? null }));
+  if (!payload.length) throw new Error('PURCHASE_ORDER_REQUIRES_LINES');
 
-  const rows = input.lines.filter((line) => line.quantity > 0).map((line) => ({
-    organization_id: input.organizationId,
-    purchase_order_id: order.id,
-    product_id: line.productId,
-    ordered_quantity: line.quantity,
-    unit_cost: line.unitCost ?? null,
-  }));
-  if (!rows.length) throw new Error('PURCHASE_ORDER_REQUIRES_LINES');
-  const { error: lineError } = await db.from('purchase_order_lines').insert(rows);
-  if (lineError) throw lineError;
-  return order.id;
+  const reference = input.poNumber.trim();
+  const { data, error } = await db.rpc('create_purchase_order', {
+    p_organization_id: input.organizationId,
+    p_branch_id: input.branchId,
+    p_supplier_id: input.supplierId,
+    p_po_number: reference,
+    p_expected_at: input.expectedAt?.trim() || null,
+    p_notes: input.notes?.trim() || null,
+    p_lines: payload,
+    p_idempotency_key: normalizedOperationKey('purchase-order', input.organizationId, reference),
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function loadPurchaseOrderLines(organizationId: string, purchaseOrderId: string, productNames: Map<string, string>): Promise<PurchaseOrderLineWithProduct[]> {
@@ -184,20 +189,25 @@ export async function receivePurchaseOrder(input: {
   notes?: string;
   lines: { purchaseOrderLineId: string; quantity: number; unitCost?: number | null; lotNumber: string; expiryDate: string }[];
 }): Promise<string> {
-  const payload = input.lines.filter((line) => line.quantity > 0).map((line) => ({
-    purchase_order_line_id: line.purchaseOrderLineId,
-    quantity: line.quantity,
-    unit_cost: line.unitCost ?? null,
-    lot_number: line.lotNumber.trim(),
-    expiry_date: line.expiryDate.trim(),
-  }));
+  const payload = input.lines
+    .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0)
+    .map((line) => ({
+      purchase_order_line_id: line.purchaseOrderLineId,
+      quantity: line.quantity,
+      unit_cost: line.unitCost ?? null,
+      lot_number: line.lotNumber.trim(),
+      expiry_date: line.expiryDate.trim(),
+    }));
   if (!payload.length) throw new Error('RECEIPT_REQUIRES_LINES');
+
+  const reference = input.receiptNumber.trim();
   const { data, error } = await db.rpc('receive_purchase_order', {
     p_purchase_order_id: input.purchaseOrderId,
-    p_receipt_number: input.receiptNumber.trim(),
+    p_receipt_number: reference,
     p_supplier_invoice_number: input.supplierInvoiceNumber?.trim() || null,
     p_lines: payload,
     p_notes: input.notes?.trim() || null,
+    p_idempotency_key: normalizedOperationKey('purchase-receipt', input.purchaseOrderId, reference),
   });
   if (error) throw error;
   return data;
