@@ -13,6 +13,7 @@ export type OutboxOperation<TPayload = unknown> = {
   status: OutboxStatus;
   attemptCount: number;
   lastAttemptAt?: string;
+  nextAttemptAt?: string;
   lastErrorCode?: string;
   serverId?: string;
 };
@@ -74,8 +75,18 @@ export class OutboxStore {
     return updated;
   }
 
-  pending(): OutboxOperation[] {
-    return this.list().filter((item) => item.status === 'PENDING' || item.status === 'FAILED');
+  pending(now = new Date(), staleSyncingAfterMs = 2 * 60 * 1000): OutboxOperation[] {
+    const nowMs = now.getTime();
+    return this.list().filter((item) => {
+      if (item.status === 'PENDING') return true;
+      if (item.status === 'FAILED') {
+        return !item.nextAttemptAt || new Date(item.nextAttemptAt).getTime() <= nowMs;
+      }
+      if (item.status === 'SYNCING' && item.lastAttemptAt) {
+        return nowMs - new Date(item.lastAttemptAt).getTime() >= staleSyncingAfterMs;
+      }
+      return false;
+    });
   }
 
   conflicts(): OutboxOperation[] {
