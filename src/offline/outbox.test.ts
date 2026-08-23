@@ -63,4 +63,50 @@ describe('offline outbox', () => {
     expect(result.conflicts).toBe(1);
     expect(outbox.conflicts()[0]?.lastErrorCode).toBe('INSUFFICIENT_STOCK');
   });
+
+  it('turns a missing replay handler into a terminal conflict', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    outbox.enqueue({ id: 'unknown-1', kind: 'UNKNOWN', organizationId: 'org', idempotencyKey: 'unknown-key', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+
+    const coordinator = new SyncCoordinator(outbox, {});
+    const result = await coordinator.replayPending();
+
+    expect(result.conflicts).toBe(1);
+    expect(outbox.pending()).toHaveLength(0);
+    expect(outbox.conflicts()[0]?.lastErrorCode).toBe('OUTBOX_HANDLER_MISSING');
+  });
+
+  it('backs off retryable failures instead of retrying on every replay loop', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    outbox.enqueue({ id: 'retry-1', kind: 'TEST', organizationId: 'org', idempotencyKey: 'retry-key', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+    let now = new Date('2026-08-23T18:10:00.000Z');
+    let attempts = 0;
+    const coordinator = new SyncCoordinator(outbox, {
+      TEST: async () => {
+        attempts += 1;
+        return { status: 'FAILED', errorCode: 'NETWORK', retryable: true };
+      },
+    }, { now: () => now, retryBaseMs: 2_000, retryMaxMs: 10_000 });
+
+    await coordinator.replayPending();
+    expect(attempts).toBe(1);
+    expect(outbox.list()[0]?.nextAttemptAt).toBe('2026-08-23T18:10:02.000Z');
+
+    await coordinator.replayPending();
+    expect(attempts).toBe(1);
+
+    now = new Date('2026-08-23T18:10:02.000Z');
+    await coordinator.replayPending();
+    expect(attempts).toBe(2);
+    expect(outbox.list()[0]?.nextAttemptAt).toBe('2026-08-23T18:10:06.000Z');
+  });
+
+  it('recovers a stale syncing operation after an interrupted app session', () => {
+    const outbox = new OutboxStore(memoryStorage());
+    outbox.enqueue({ id: 'stale-1', kind: 'TEST', organizationId: 'org', idempotencyKey: 'stale-key', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+    outbox.update('stale-1', { status: 'SYNCING', lastAttemptAt: '2026-08-23T18:05:00.000Z', attemptCount: 1 });
+
+    expect(outbox.pending(new Date('2026-08-23T18:06:00.000Z'))).toHaveLength(0);
+    expect(outbox.pending(new Date('2026-08-23T18:08:00.000Z'))).toHaveLength(1);
+  });
 });
