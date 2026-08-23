@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OutboxStore } from './outbox';
-import { SyncCoordinator } from './sync';
+import { ReplayPreparationError, SyncCoordinator } from './sync';
 import type { KeyValueStorage } from './storage';
 
 function memoryStorage(): KeyValueStorage {
@@ -125,5 +125,90 @@ describe('offline outbox', () => {
 
     expect(outbox.pending(new Date('2026-08-23T18:06:00.000Z'))).toHaveLength(0);
     expect(outbox.pending(new Date('2026-08-23T18:08:00.000Z'))).toHaveLength(1);
+  });
+
+  it('runs reconnect preparation before replay without changing the idempotency key', async () => {
+    const storage = memoryStorage();
+    const outbox = new OutboxStore(storage);
+    outbox.enqueue({ id: 'sale-1', kind: 'SALE', organizationId: 'org', idempotencyKey: 'stable-sale-key', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+    const events: string[] = [];
+    const coordinator = new SyncCoordinator(outbox, {
+      SALE: async (operation) => {
+        events.push(`replay:${operation.idempotencyKey}`);
+        return { status: 'SYNCED' };
+      },
+    }, {
+      beforeReplay: async () => { events.push('refresh-and-pull'); },
+    });
+
+    await coordinator.replayPending();
+
+    expect(events).toEqual(['refresh-and-pull', 'replay:stable-sale-key']);
+    expect(outbox.list()[0]?.idempotencyKey).toBe('stable-sale-key');
+  });
+
+  it('retains backoff when reconnect preparation fails transiently', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    outbox.enqueue({ id: 'sale-1', kind: 'SALE', organizationId: 'org', idempotencyKey: 'stable-sale-key', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+    const now = new Date('2026-08-23T18:10:00.000Z');
+    const coordinator = new SyncCoordinator(outbox, {}, {
+      now: () => now,
+      beforeReplay: async () => { throw new Error('network unavailable'); },
+    });
+
+    const result = await coordinator.replayPending();
+
+    expect(result.failed).toBe(1);
+    expect(outbox.list()[0]).toMatchObject({
+      status: 'FAILED',
+      attemptCount: 1,
+      idempotencyKey: 'stable-sale-key',
+      nextAttemptAt: '2026-08-23T18:10:02.000Z',
+    });
+  });
+
+  it('turns deterministic replay preparation failures into conflicts', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    outbox.enqueue({ id: 'sale-1', kind: 'SALE', organizationId: 'org', idempotencyKey: 'stable-sale-key', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+    const coordinator = new SyncCoordinator(outbox, {}, {
+      beforeReplay: async () => { throw new ReplayPreparationError('AUTH_SESSION_MISSING', false); },
+    });
+
+    const result = await coordinator.replayPending();
+
+    expect(result.conflicts).toBe(1);
+    expect(outbox.list()[0]).toMatchObject({
+      status: 'CONFLICT',
+      idempotencyKey: 'stable-sale-key',
+      lastErrorCode: 'AUTH_SESSION_MISSING',
+    });
+    expect(outbox.list()[0]).not.toHaveProperty('nextAttemptAt');
+  });
+
+  it('replays a stale syncing operation after crash recovery with its original key', async () => {
+    const storage = memoryStorage();
+    const crashedOutbox = new OutboxStore(storage);
+    crashedOutbox.enqueue({ id: 'sale-1', kind: 'SALE', organizationId: 'org', idempotencyKey: 'pre-crash-key', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+    crashedOutbox.update('sale-1', { status: 'SYNCING', attemptCount: 1, lastAttemptAt: '2026-08-23T18:05:00.000Z' });
+
+    const recoveredOutbox = new OutboxStore(storage);
+    const seen: string[] = [];
+    const coordinator = new SyncCoordinator(recoveredOutbox, {
+      SALE: async (operation) => {
+        seen.push(operation.idempotencyKey);
+        return { status: 'CONFLICT', errorCode: 'INSUFFICIENT_STOCK' };
+      },
+    }, { now: () => new Date('2026-08-23T18:08:00.000Z') });
+
+    const result = await coordinator.replayPending();
+
+    expect(seen).toEqual(['pre-crash-key']);
+    expect(result.conflicts).toBe(1);
+    expect(recoveredOutbox.list()[0]).toMatchObject({
+      status: 'CONFLICT',
+      attemptCount: 2,
+      idempotencyKey: 'pre-crash-key',
+      lastErrorCode: 'INSUFFICIENT_STOCK',
+    });
   });
 });

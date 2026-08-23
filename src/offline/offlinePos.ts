@@ -1,7 +1,7 @@
 import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxStore, createOutboxId, type OutboxOperation } from './outbox';
-import { SyncCoordinator, type ReplayResult } from './sync';
+import { SyncCoordinator, ReplayPreparationError, type ReplayResult } from './sync';
 import type { CartLine, PaymentInput, SaleQuote } from '../services/sales';
 
 export type OfflineSalePayload = {
@@ -112,8 +112,52 @@ function classifySaleError(error: unknown): ReplayResult {
   return { status: 'FAILED', errorCode: 'NETWORK_OR_SERVER_ERROR', retryable: true };
 }
 
-export async function replayPendingSales(outbox: OutboxStore) {
+type ReplayPendingSalesOptions = {
+  localStore?: LocalStore;
+  now?: () => Date;
+  refreshLeewaySeconds?: number;
+};
+
+type ReplayAuthClient = {
+  getSession: () => Promise<{
+    data: { session: { expires_at?: number } | null };
+    error: { status?: number } | null;
+  }>;
+  refreshSession: () => Promise<{
+    data: { session: { expires_at?: number } | null };
+    error: { status?: number } | null;
+  }>;
+};
+
+function preparationFailure(code: string, error: { status?: number } | null) {
+  const status = error?.status;
+  return new ReplayPreparationError(code, status === undefined || status >= 500);
+}
+
+export async function refreshSessionForReplay(
+  now = new Date(),
+  refreshLeewaySeconds = 60,
+  authClient?: ReplayAuthClient,
+) {
+  const auth = authClient ?? (await import('../lib/supabase')).supabase.auth;
+  const { data, error } = await auth.getSession();
+  if (error) throw preparationFailure('AUTH_SESSION_READ_FAILED', error);
+  if (!data.session) throw new ReplayPreparationError('AUTH_SESSION_MISSING', false);
+
+  const expiresAt = data.session.expires_at;
+  if (expiresAt && expiresAt * 1000 > now.getTime() + refreshLeewaySeconds * 1000) return;
+
+  const refreshed = await auth.refreshSession();
+  if (!refreshed.error && refreshed.data.session) return;
+  throw preparationFailure('AUTH_SESSION_REFRESH_FAILED', refreshed.error);
+}
+
+export async function replayPendingSales(
+  outbox: OutboxStore,
+  options: ReplayPendingSalesOptions = {},
+) {
   const { completeSale } = await import('../services/sales');
+  const localStore = options.localStore ?? new LocalStore();
   const coordinator = new SyncCoordinator(outbox, {
     SALE: async (operation: OutboxOperation) => {
       const payload = operation.payload as OfflineSalePayload;
@@ -131,6 +175,34 @@ export async function replayPendingSales(outbox: OutboxStore) {
         return { status: 'SYNCED', serverId };
       } catch (error) {
         return classifySaleError(error);
+      }
+    },
+  }, {
+    now: options.now,
+    beforeReplay: async () => {
+      await refreshSessionForReplay(options.now?.() ?? new Date(), options.refreshLeewaySeconds);
+      const [{ loadInventoryBalances }, { cachePosStockSnapshot }] = await Promise.all([
+        import('../services/inventory'),
+        import('./offlinePosCatalog'),
+      ]);
+      const scopes = new Map<string, { organizationId: string; branchId: string }>();
+      for (const operation of outbox.pending(options.now?.() ?? new Date())) {
+        if (operation.kind !== 'SALE' || !operation.branchId) continue;
+        scopes.set(`${operation.organizationId}:${operation.branchId}`, {
+          organizationId: operation.organizationId,
+          branchId: operation.branchId,
+        });
+      }
+      for (const scope of scopes.values()) {
+        try {
+          const balances = await loadInventoryBalances(scope.organizationId, scope.branchId);
+          cachePosStockSnapshot(localStore, scope.organizationId, scope.branchId, balances);
+        } catch (error) {
+          throw preparationFailure(
+            'PULL_BEFORE_REPLAY_FAILED',
+            error && typeof error === 'object' ? error as { status?: number } : null,
+          );
+        }
       }
     },
   });

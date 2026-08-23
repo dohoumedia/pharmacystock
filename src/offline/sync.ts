@@ -11,13 +11,25 @@ type SyncCoordinatorOptions = {
   now?: () => Date;
   retryBaseMs?: number;
   retryMaxMs?: number;
+  beforeReplay?: () => Promise<void>;
 };
+
+export class ReplayPreparationError extends Error {
+  constructor(
+    readonly code: string,
+    readonly retryable: boolean,
+  ) {
+    super(code);
+    this.name = 'ReplayPreparationError';
+  }
+}
 
 export class SyncCoordinator {
   private inFlight: Promise<{ synced: number; conflicts: number; failed: number }> | null = null;
   private readonly now: () => Date;
   private readonly retryBaseMs: number;
   private readonly retryMaxMs: number;
+  private readonly beforeReplay?: () => Promise<void>;
 
   constructor(
     private readonly outbox: OutboxStore,
@@ -27,6 +39,7 @@ export class SyncCoordinator {
     this.now = options.now ?? (() => new Date());
     this.retryBaseMs = options.retryBaseMs ?? 2_000;
     this.retryMaxMs = options.retryMaxMs ?? 5 * 60_000;
+    this.beforeReplay = options.beforeReplay;
   }
 
   replayPending(): Promise<{ synced: number; conflicts: number; failed: number }> {
@@ -48,7 +61,31 @@ export class SyncCoordinator {
     let conflicts = 0;
     let failed = 0;
 
-    for (const operation of this.outbox.pending(this.now())) {
+    const pending = this.outbox.pending(this.now());
+    if (pending.length > 0 && this.beforeReplay) {
+      try {
+        await this.beforeReplay();
+      } catch (error) {
+        const preparationError = error instanceof ReplayPreparationError
+          ? error
+          : new ReplayPreparationError('REPLAY_PREPARATION_FAILED', true);
+        for (const operation of pending) {
+          const attemptCount = operation.attemptCount + 1;
+          this.outbox.update(operation.id, {
+            status: preparationError.retryable ? 'FAILED' : 'CONFLICT',
+            attemptCount,
+            lastAttemptAt: this.now().toISOString(),
+            nextAttemptAt: preparationError.retryable ? this.retryAt(attemptCount) : undefined,
+            lastErrorCode: preparationError.code,
+          });
+        }
+        return preparationError.retryable
+          ? { synced: 0, conflicts: 0, failed: pending.length }
+          : { synced: 0, conflicts: pending.length, failed: 0 };
+      }
+    }
+
+    for (const operation of pending) {
       const handler = this.handlers[operation.kind];
       const nextAttemptCount = operation.attemptCount + 1;
       const attemptAt = this.now().toISOString();
