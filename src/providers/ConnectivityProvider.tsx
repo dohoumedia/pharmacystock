@@ -39,22 +39,29 @@ export function ConnectivityProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const initialCheck = setTimeout(() => void refresh(), 0);
     const interval = setInterval(() => void refresh(), 30000);
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const online = () => void refresh();
-      const offline = () => { setState('offline'); setLastCheckedAt(Date.now()); };
+      const offline = () => {
+        setState('offline');
+        setLastCheckedAt(Date.now());
+      };
       window.addEventListener('online', online);
       window.addEventListener('offline', offline);
       return () => {
+        clearTimeout(initialCheck);
         clearInterval(interval);
         window.removeEventListener('online', online);
         window.removeEventListener('offline', offline);
       };
     }
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialCheck);
+      clearInterval(interval);
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -62,7 +69,11 @@ export function ConnectivityProvider({ children }: PropsWithChildren) {
     void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
   }, []);
 
-  const value = useMemo(() => ({ state, isOnline: state === 'online', lastCheckedAt, refresh }), [state, lastCheckedAt, refresh]);
+  const value = useMemo(
+    () => ({ state, isOnline: state === 'online', lastCheckedAt, refresh }),
+    [state, lastCheckedAt, refresh],
+  );
+
   return <ConnectivityContext.Provider value={value}>{children}</ConnectivityContext.Provider>;
 }
 
