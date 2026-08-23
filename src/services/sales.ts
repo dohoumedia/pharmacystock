@@ -7,18 +7,19 @@ export type Sale = { id: string; organization_id: string; branch_id: string; sal
 export type SaleItem = { id: string; organization_id: string; sale_id: string; product_id: string; batch_id: string; quantity: number; unit_price: number; line_total: number; inventory_movement_id: string; created_at: string };
 export type Payment = { id: string; organization_id: string; branch_id: string; sale_id: string; method: 'CASH'|'CARD'|'MOBILE_MONEY'|'BANK_TRANSFER'|'OTHER'; amount: number; provider: string | null; external_reference: string | null; status: 'RECORDED'|'REVERSED'; created_at: string };
 export type Refund = { id: string; organization_id: string; branch_id: string; sale_id: string; refund_number: string; reason: string; amount: number; created_at: string };
-
 export type CartLine = { product_id: string; quantity: number };
 export type PaymentInput = { method: Payment['method']; amount: number; provider?: string; external_reference?: string };
+export type SaleQuote = { total_amount: number; items: { product_id: string; batch_id: string; quantity: number; unit_price: number; line_total: number; expiry_date: string }[] };
 
 type SalesDatabase = { public: { Tables: {
-  products: { Row: PosProduct; Insert: never; Update: never; Relationships: [] };
-  batches: { Row: PosBatch; Insert: never; Update: never; Relationships: [] };
+  products: { Row: PosProduct & { organization_id?: string; status?: string }; Insert: never; Update: never; Relationships: [] };
+  batches: { Row: PosBatch & { organization_id?: string; branch_id?: string }; Insert: never; Update: never; Relationships: [] };
   sales: { Row: Sale; Insert: never; Update: never; Relationships: [] };
   sale_items: { Row: SaleItem; Insert: never; Update: never; Relationships: [] };
   payments: { Row: Payment; Insert: never; Update: never; Relationships: [] };
   sale_refunds: { Row: Refund; Insert: never; Update: never; Relationships: [] };
 }; Views: Record<string, never>; Functions: {
+  quote_sale: { Args: { p_organization_id: string; p_branch_id: string; p_lines: CartLine[] }; Returns: SaleQuote };
   complete_sale: { Args: { p_organization_id: string; p_branch_id: string; p_sale_number: string; p_lines: CartLine[]; p_payments: PaymentInput[]; p_idempotency_key: string; p_notes?: string | null }; Returns: string };
   refund_sale: { Args: { p_sale_id: string; p_refund_number: string; p_items: { sale_item_id: string; quantity: number }[]; p_idempotency_key: string; p_reason: string }; Returns: string };
 }; Enums: Record<string, never>; CompositeTypes: Record<string, never> } };
@@ -38,6 +39,12 @@ export async function loadSellableBatches(organizationId: string, branchId: stri
   const { data, error } = await db.from('batches').select('id,product_id,lot_number,expiry_date,selling_price,status').eq('organization_id', organizationId).eq('branch_id', branchId).eq('product_id', productId).eq('status', 'ACTIVE').gte('expiry_date', new Date().toISOString().slice(0,10)).order('expiry_date');
   if (error) throw error;
   return data as PosBatch[];
+}
+
+export async function quoteSale(organizationId: string, branchId: string, lines: CartLine[]): Promise<SaleQuote> {
+  const { data, error } = await db.rpc('quote_sale', { p_organization_id: organizationId, p_branch_id: branchId, p_lines: lines });
+  if (error) throw error;
+  return data;
 }
 
 export async function completeSale(input: { organizationId: string; branchId: string; saleNumber: string; lines: CartLine[]; payments: PaymentInput[]; idempotencyKey: string; notes?: string }): Promise<string> {
