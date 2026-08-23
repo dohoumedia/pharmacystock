@@ -1,5 +1,6 @@
 export type TransferAction = 'approve' | 'dispatch' | 'receive' | 'cancel';
-type TransferStatus = 'REQUESTED'|'APPROVED'|'DISPATCHED'|'RECEIVED'|'RECEIVED_WITH_DISCREPANCY'|'CANCELLED';
+export type TransferStatus = 'REQUESTED'|'APPROVED'|'DISPATCHED'|'RECEIVED'|'RECEIVED_WITH_DISCREPANCY'|'CANCELLED';
+export type OperationalLayout = 'cards' | 'table';
 type EligibleBatch = { status: string; expiry_date: string; balance?: number };
 
 export function isTransferBatchEligible(batch: EligibleBatch, today: string) {
@@ -15,4 +16,16 @@ export function canApplyTransferAction(status: TransferStatus, action: TransferA
 
 export function validateReceivedQuantity(quantity: number, dispatchedQuantity: number) {
   return Number.isFinite(quantity) && quantity >= 0 && quantity <= dispatchedQuantity;
+}
+
+export function operationalLayoutForWidth(width: number): OperationalLayout {
+  return width >= 900 ? 'table' : 'cards';
+}
+
+export function canRunTransferMutation(input: { isOnline: boolean; permitted: boolean; status: TransferStatus; action: TransferAction }) {
+  return input.isOnline && input.permitted && canApplyTransferAction(input.status, input.action);
+}
+
+export function hasTransferDiscrepancy(status: TransferStatus, discrepancyQuantity = 0) {
+  return status === 'RECEIVED_WITH_DISCREPANCY' || discrepancyQuantity !== 0;
 }

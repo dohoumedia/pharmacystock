@@ -9,20 +9,20 @@ const expiryKey = (organizationId: string, branchId: string) => `expiry:read:${o
 const transfersKey = (organizationId: string, branchId: string) => `transfers:read:${organizationId}:${branchId}`;
 const transferLinesKey = (organizationId: string, transferId: string) => `transfers:lines:${organizationId}:${transferId}`;
 
-export function cacheExpiryReadModel(store: LocalStore, organizationId: string, branchId: string, data: ExpiryReadModel) {
-  store.set(expiryKey(organizationId, branchId), { data, syncedAt: new Date().toISOString() });
+export function cacheExpiryReadModel(store: LocalStore, organizationId: string, branchId: string, data: ExpiryReadModel, syncedAt = new Date().toISOString()) {
+  store.set(expiryKey(organizationId, branchId), { data, syncedAt });
 }
 export function getCachedExpiryReadModel(store: LocalStore, organizationId: string, branchId: string) {
   return store.get<ExpiryReadModel>(expiryKey(organizationId, branchId));
 }
-export function cacheTransfersReadModel(store: LocalStore, organizationId: string, branchId: string, data: TransfersReadModel) {
-  store.set(transfersKey(organizationId, branchId), { data, syncedAt: new Date().toISOString() });
+export function cacheTransfersReadModel(store: LocalStore, organizationId: string, branchId: string, data: TransfersReadModel, syncedAt = new Date().toISOString()) {
+  store.set(transfersKey(organizationId, branchId), { data, syncedAt });
 }
 export function getCachedTransfersReadModel(store: LocalStore, organizationId: string, branchId: string) {
   return store.get<TransfersReadModel>(transfersKey(organizationId, branchId));
 }
-export function cacheTransferLines(store: LocalStore, organizationId: string, transferId: string, data: StockTransferLine[]) {
-  store.set(transferLinesKey(organizationId, transferId), { data, syncedAt: new Date().toISOString() });
+export function cacheTransferLines(store: LocalStore, organizationId: string, transferId: string, data: StockTransferLine[], syncedAt = new Date().toISOString()) {
+  store.set(transferLinesKey(organizationId, transferId), { data, syncedAt });
 }
 export function getCachedTransferLines(store: LocalStore, organizationId: string, transferId: string) {
   return store.get<StockTransferLine[]>(transferLinesKey(organizationId, transferId));

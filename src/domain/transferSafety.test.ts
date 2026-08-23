@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canApplyTransferAction, isTransferBatchEligible, validateReceivedQuantity } from './transferSafety';
+import { canApplyTransferAction, canRunTransferMutation, hasTransferDiscrepancy, isTransferBatchEligible, operationalLayoutForWidth, validateReceivedQuantity } from './transferSafety';
 
 describe('transfer safety presentation guards', () => {
   it('excludes expired, quarantined, depleted, and empty batches', () => {
@@ -22,5 +22,24 @@ describe('transfer safety presentation guards', () => {
     expect(validateReceivedQuantity(-1, 4)).toBe(false);
     expect(validateReceivedQuantity(5, 4)).toBe(false);
     expect(validateReceivedQuantity(Number.NaN, 4)).toBe(false);
+  });
+
+  it('uses desktop tables and mobile task cards', () => {
+    expect(operationalLayoutForWidth(390)).toBe('cards');
+    expect(operationalLayoutForWidth(768)).toBe('cards');
+    expect(operationalLayoutForWidth(1024)).toBe('table');
+  });
+
+  it('gates every transition on connectivity, permission, and current state', () => {
+    expect(canRunTransferMutation({ isOnline: true, permitted: true, status: 'REQUESTED', action: 'approve' })).toBe(true);
+    expect(canRunTransferMutation({ isOnline: false, permitted: true, status: 'REQUESTED', action: 'approve' })).toBe(false);
+    expect(canRunTransferMutation({ isOnline: true, permitted: false, status: 'APPROVED', action: 'dispatch' })).toBe(false);
+    expect(canRunTransferMutation({ isOnline: true, permitted: true, status: 'RECEIVED', action: 'dispatch' })).toBe(false);
+  });
+
+  it('presents terminal discrepancy state independently of color', () => {
+    expect(hasTransferDiscrepancy('RECEIVED_WITH_DISCREPANCY')).toBe(true);
+    expect(hasTransferDiscrepancy('RECEIVED', -1)).toBe(true);
+    expect(hasTransferDiscrepancy('RECEIVED', 0)).toBe(false);
   });
 });
