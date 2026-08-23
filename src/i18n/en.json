@@ -13,5 +13,15 @@
     "orders": "Purchase orders", "newOrder": "New purchase order", "poNumber": "PO number", "expectedAt": "Expected date (YYYY-MM-DD)", "addProducts": "Add products", "quantity": "Quantity", "unitCost": "Unit cost", "createOrder": "Create purchase order", "noOrders": "No purchase orders for this branch.",
     "receiveOrder": "Receive delivery", "receiptNumber": "Receipt number", "supplierInvoice": "Supplier invoice number", "remaining": "Remaining", "quantityReceived": "Quantity received", "confirmReceipt": "Confirm receipt", "receiptHistory": "Receipt history", "noReceipts": "No receipts yet.",
     "status": {"draft": "Draft", "ordered": "Ordered", "partially_received": "Partially received", "received": "Received", "cancelled": "Cancelled"}
+  },
+  "expiry": {
+    "title": "Expiry Center", "subtitle": "See financial risk early, follow expiry alerts and take controlled batch actions.", "manage": "Expiry Center", "cannotRead": "Your role does not allow expiry inventory access.",
+    "valueAtRisk": "Value at risk", "riskList": "Batches at risk", "noRisk": "No stocked batches are currently at expiry risk.", "expires": "Expires", "daysRemaining": "Days remaining",
+    "policy": "Expiry alert thresholds", "policyHint": "Comma-separated warning days. Example: 180, 90, 60, 30, 7.",
+    "actions": "Batch actions", "reason": "Reason / note", "prioritizeSale": "Prioritize sale", "quarantine": "Quarantine", "releaseQuarantine": "Release quarantine", "returnSupplier": "Return to supplier", "returnQuantity": "Return quantity", "dispose": "Dispose batch", "confirmDispose": "Confirm disposal",
+    "alerts": "Expiry alerts", "noAlerts": "No open expiry alerts.", "acknowledge": "Acknowledge", "expired": "Batch expired", "warning": "Expiry warning: {{days}} days",
+    "recentActions": "Recent expiry actions", "noActions": "No expiry actions recorded yet.",
+    "bucket": {"EXPIRED": "Expired", "7_DAYS": "≤ 7 days", "30_DAYS": "≤ 30 days", "60_DAYS": "≤ 60 days", "90_DAYS": "≤ 90 days", "180_DAYS": "≤ 180 days", "OK": "Beyond 180 days"},
+    "action": {"PRIORITIZE_SALE": "Prioritize sale", "QUARANTINE": "Quarantine", "RELEASE_QUARANTINE": "Release quarantine", "DISPOSE": "Dispose", "SUPPLIER_RETURN": "Supplier return"}
   }
 }

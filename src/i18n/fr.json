@@ -13,5 +13,15 @@
     "orders": "Bons de commande", "newOrder": "Nouveau bon de commande", "poNumber": "Numéro du bon", "expectedAt": "Date prévue (AAAA-MM-JJ)", "addProducts": "Ajouter des produits", "quantity": "Quantité", "unitCost": "Coût unitaire", "createOrder": "Créer le bon de commande", "noOrders": "Aucun bon de commande pour cette succursale.",
     "receiveOrder": "Réceptionner la livraison", "receiptNumber": "Numéro de réception", "supplierInvoice": "Numéro de facture fournisseur", "remaining": "Restant", "quantityReceived": "Quantité reçue", "confirmReceipt": "Confirmer la réception", "receiptHistory": "Historique des réceptions", "noReceipts": "Aucune réception pour le moment.",
     "status": {"draft": "Brouillon", "ordered": "Commandé", "partially_received": "Partiellement reçu", "received": "Reçu", "cancelled": "Annulé"}
+  },
+  "expiry": {
+    "title": "Centre des péremptions", "subtitle": "Repérez tôt le risque financier, suivez les alertes et appliquez des actions contrôlées sur les lots.", "manage": "Péremptions", "cannotRead": "Votre rôle ne permet pas d’accéder aux données de péremption.",
+    "valueAtRisk": "Valeur à risque", "riskList": "Lots à risque", "noRisk": "Aucun lot en stock n’est actuellement à risque de péremption.", "expires": "Péremption", "daysRemaining": "Jours restants",
+    "policy": "Seuils d’alerte de péremption", "policyHint": "Jours d’alerte séparés par des virgules. Exemple : 180, 90, 60, 30, 7.",
+    "actions": "Actions sur le lot", "reason": "Motif / note", "prioritizeSale": "Prioriser la vente", "quarantine": "Mettre en quarantaine", "releaseQuarantine": "Lever la quarantaine", "returnSupplier": "Retour fournisseur", "returnQuantity": "Quantité à retourner", "dispose": "Mettre le lot au rebut", "confirmDispose": "Confirmer la mise au rebut",
+    "alerts": "Alertes de péremption", "noAlerts": "Aucune alerte de péremption ouverte.", "acknowledge": "Accuser réception", "expired": "Lot périmé", "warning": "Alerte de péremption : {{days}} jours",
+    "recentActions": "Actions récentes de péremption", "noActions": "Aucune action de péremption enregistrée.",
+    "bucket": {"EXPIRED": "Périmé", "7_DAYS": "≤ 7 jours", "30_DAYS": "≤ 30 jours", "60_DAYS": "≤ 60 jours", "90_DAYS": "≤ 90 jours", "180_DAYS": "≤ 180 jours", "OK": "Au-delà de 180 jours"},
+    "action": {"PRIORITIZE_SALE": "Prioriser la vente", "QUARANTINE": "Mise en quarantaine", "RELEASE_QUARANTINE": "Levée de quarantaine", "DISPOSE": "Mise au rebut", "SUPPLIER_RETURN": "Retour fournisseur"}
   }
 }
