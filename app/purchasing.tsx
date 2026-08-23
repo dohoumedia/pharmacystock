@@ -23,6 +23,7 @@ import {
   type Supplier,
 } from '@/services/purchasing';
 import { breakpoints, colors, radii, spacing, touchTarget } from '@/theme/tokens';
+import { filterPurchaseOrders, purchasingLayout, purchasingMutationAllowed, type PurchaseOrderFilter } from '@/domain/purchasingState';
 
 type Tab = 'orders' | 'suppliers' | 'receipts';
 type DraftLine = { productId: string; quantity: string; unitCost: string };
@@ -57,14 +58,18 @@ export default function PurchasingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [usingCachedData, setUsingCachedData] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [orderQuery, setOrderQuery] = useState('');
+  const [orderFilter, setOrderFilter] = useState<PurchaseOrderFilter>('open');
   const refreshRequest = useRef(0);
 
   const canRead = can('purchase.read');
   const canCreate = can('purchase.create');
   const canReceive = can('purchase.receive');
-  const mutationsAuthorized = isOnline && !usingCachedPermissions;
+  const mutationsAuthorized = purchasingMutationAllowed(isOnline, canCreate || canReceive, usingCachedPermissions);
   const compact = width < breakpoints.tablet;
+  const orderLayout = purchasingLayout(width);
   const productMap = useMemo(() => new Map(products.map((item) => [item.id, item.name])), [products]);
+  const visibleOrders = useMemo(() => filterPurchaseOrders(orders, orderQuery, orderFilter), [orderFilter, orderQuery, orders]);
 
   const applyCachedReadModel = useCallback(() => {
     if (!organization || !branch) return false;
@@ -358,7 +363,16 @@ export default function PurchasingScreen() {
 
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>{t('purchasing.orders')}</Text>
-              {orders.length === 0 ? <Text style={styles.meta}>{t('purchasing.noOrders')}</Text> : orders.map((item) => (
+              <TextInput accessibilityLabel={t('production.purchasingView.search')} onChangeText={setOrderQuery} placeholder={t('production.purchasingView.search')} style={styles.input} value={orderQuery} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={styles.chips}>{(['open', 'partial', 'received', 'all'] as PurchaseOrderFilter[]).map((filter) => (
+                <Pressable key={filter} onPress={() => setOrderFilter(filter)} style={[styles.chip, orderFilter === filter && styles.chipSelected]}><Text style={[styles.chipText, orderFilter === filter && styles.chipTextSelected]}>{t(`production.purchasingView.filters.${filter}`)}</Text></Pressable>
+              ))}</View></ScrollView>
+              {orders.length === 0 ? <Text style={styles.meta}>{t('purchasing.noOrders')}</Text> : null}
+              {orders.length > 0 && visibleOrders.length === 0 ? <Text style={styles.meta}>{t('production.purchasingView.noMatches')}</Text> : null}
+              {orderLayout === 'table' && visibleOrders.length > 0 ? <View style={styles.table}>
+                <View style={[styles.tableRow, styles.tableHeader]}><Text style={[styles.tableHeading, styles.poColumn]}>{t('purchasing.poNumber')}</Text><Text style={[styles.tableHeading, styles.supplierColumn]}>{t('purchasing.supplier')}</Text><Text style={[styles.tableHeading, styles.dateColumn]}>{t('purchasing.expectedAt')}</Text><Text style={[styles.tableHeading, styles.statusColumn]}>{t('production.purchasingView.status')}</Text></View>
+                {visibleOrders.map((item) => <Pressable accessibilityRole="button" key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={styles.tableRow}><Text style={[styles.name, styles.poColumn]}>{item.po_number}</Text><Text style={[styles.meta, styles.supplierColumn]}>{item.supplier_name}</Text><Text style={[styles.meta, styles.dateColumn]}>{formatDate(item.expected_at)}</Text><Text style={[styles.status, styles.statusColumn]}>{t(`purchasing.status.${item.status}`)}</Text></Pressable>)}
+              </View> : visibleOrders.map((item) => (
                 <Pressable accessibilityRole="button" key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={[styles.row, compact && styles.compactRow]}>
                   <View style={styles.grow}><Text style={styles.name}>{item.po_number}</Text><Text style={styles.meta}>{item.supplier_name} · {formatDate(item.expected_at)}</Text></View>
                   <Text style={styles.status}>{t(`purchasing.status.${item.status}`)}</Text>
@@ -438,6 +452,11 @@ const styles = StyleSheet.create({
   chipTextSelected: { color: '#FFF' },
   row: { minHeight: touchTarget, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: '#EAECF0' },
   compactRow: { alignItems: 'flex-start', flexWrap: 'wrap' },
+  table: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, overflow: 'hidden' },
+  tableRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: '#EAECF0' },
+  tableHeader: { minHeight: 40, backgroundColor: '#F9FAFB' },
+  tableHeading: { color: colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  poColumn: { flex: 1, minWidth: 110 }, supplierColumn: { flex: 2, minWidth: 170 }, dateColumn: { flex: 1, minWidth: 130 }, statusColumn: { flex: 1, minWidth: 150 },
   lineEditor: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   compactEditor: { alignItems: 'stretch' },
   quantitySummary: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
