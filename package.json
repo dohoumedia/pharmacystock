@@ -22,6 +22,7 @@
     "expo-sqlite": "~57.0.0",
     "i18next": "26.4.0",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-i18next": "17.0.12",
     "react-native": "0.86.0",
     "react-native-safe-area-context": "latest",
