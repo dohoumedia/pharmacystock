@@ -43,7 +43,7 @@ export default function BatchesScreen() {
     } finally {
       setLoading(false);
     }
-  }, [organization, branch?.id, canRead]);
+  }, [organization, branch, canRead]);
 
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), 0);
