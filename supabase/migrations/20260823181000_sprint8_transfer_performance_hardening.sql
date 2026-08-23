@@ -1,0 +1,10 @@
+create index if not exists stock_transfer_lines_org_transfer_idx on public.stock_transfer_lines(organization_id,transfer_id);
+create index if not exists stock_transfer_lines_org_source_batch_idx on public.stock_transfer_lines(organization_id,source_batch_id);
+create index if not exists stock_transfer_lines_org_destination_batch_idx on public.stock_transfer_lines(organization_id,destination_batch_id);
+create index if not exists stock_transfer_lines_org_product_idx on public.stock_transfer_lines(organization_id,product_id);
+create index if not exists stock_transfer_lines_transfer_out_movement_idx on public.stock_transfer_lines(transfer_out_movement_id);
+create index if not exists stock_transfer_lines_transfer_in_movement_idx on public.stock_transfer_lines(transfer_in_movement_id);
+create index if not exists stock_transfers_requested_by_idx on public.stock_transfers(requested_by);
+create index if not exists stock_transfers_approved_by_idx on public.stock_transfers(approved_by);
+create index if not exists stock_transfers_dispatched_by_idx on public.stock_transfers(dispatched_by);
+create index if not exists stock_transfers_received_by_idx on public.stock_transfers(received_by);

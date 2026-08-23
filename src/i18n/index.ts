@@ -5,6 +5,8 @@ import en from './en.json';
 import fr from './fr.json';
 import sprint7En from './sprint7.en.json';
 import sprint7Fr from './sprint7.fr.json';
+import sprint8En from './sprint8.en.json';
+import sprint8Fr from './sprint8.fr.json';
 
 const deviceLanguage = getLocales()[0]?.languageCode === 'en' ? 'en' : 'fr';
 
@@ -16,8 +18,8 @@ void i18n.use(initReactI18next).init({
   fallbackLng: 'fr',
   supportedLngs: ['en', 'fr'],
   resources: {
-    en: { translation: { ...en, ...sprint7En } },
-    fr: { translation: { ...fr, ...sprint7Fr } },
+    en: { translation: { ...en, ...sprint7En, ...sprint8En } },
+    fr: { translation: { ...fr, ...sprint7Fr, ...sprint8Fr } },
   },
   interpolation: {
     escapeValue: false,
