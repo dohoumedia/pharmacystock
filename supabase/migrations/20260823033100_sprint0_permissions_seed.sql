@@ -1,0 +1,27 @@
+insert into public.permissions(code, description_en, description_fr) values
+('organization.manage','Manage organization settings','Gérer les paramètres de l’organisation'),
+('branch.manage','Manage branches','Gérer les succursales'),
+('staff.manage','Manage staff and roles','Gérer le personnel et les rôles'),
+('inventory.read','View inventory','Consulter le stock'),
+('inventory.product.create','Create products','Créer des produits'),
+('inventory.product.update','Update products','Modifier les produits'),
+('inventory.adjust','Adjust inventory','Ajuster le stock'),
+('inventory.dispose','Dispose inventory','Mettre le stock au rebut'),
+('purchase.read','View purchasing','Consulter les achats'),
+('purchase.create','Create purchase orders','Créer des bons de commande'),
+('purchase.receive','Receive purchases','Réceptionner les achats'),
+('sale.read','View sales','Consulter les ventes'),
+('sale.create','Create sales','Créer des ventes'),
+('sale.refund','Refund sales','Rembourser des ventes'),
+('customer.read','View customers','Consulter les clients'),
+('customer.manage','Manage customers','Gérer les clients'),
+('reports.read','View operational reports','Consulter les rapports opérationnels'),
+('reports.finance.read','View financial reports','Consulter les rapports financiers'),
+('audit.read','View audit log','Consulter le journal d’audit'),
+('exchange.publish','Publish Exchange listings','Publier des offres d’échange'),
+('exchange.request','Request Exchange stock','Demander du stock via le réseau d’échange'),
+('exchange.approve','Approve Exchange requests','Approuver les demandes d’échange'),
+('reservation.manage','Manage reservations','Gérer les réservations')
+on conflict (code) do update
+set description_en = excluded.description_en,
+    description_fr = excluded.description_fr;
