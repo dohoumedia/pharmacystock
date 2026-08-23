@@ -81,7 +81,9 @@
       "unknown": "Indisponible"
     },
     "reports": {
-      "refreshFailed": "L’actualisation du serveur a échoué. Les dernières données de rapport synchronisées sont affichées si disponibles."
+      "refreshFailed": "L’actualisation du serveur a échoué. Les dernières données de rapport synchronisées sont affichées si disponibles.",
+      "date": "Date",
+      "grossSales": "Ventes brutes"
     },
     "customers": {
       "addTitle": "Nouveau client",

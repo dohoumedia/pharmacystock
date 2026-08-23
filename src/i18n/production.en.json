@@ -81,7 +81,9 @@
       "unknown": "Unavailable"
     },
     "reports": {
-      "refreshFailed": "The server refresh failed. Showing the last synchronized report data when available."
+      "refreshFailed": "The server refresh failed. Showing the last synchronized report data when available.",
+      "date": "Date",
+      "grossSales": "Gross sales"
     },
     "customers": {
       "addTitle": "New customer",
