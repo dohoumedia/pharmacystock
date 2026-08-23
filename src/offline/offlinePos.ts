@@ -2,7 +2,7 @@ import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxStore, createOutboxId, type OutboxOperation } from './outbox';
 import { SyncCoordinator, type ReplayResult } from './sync';
-import { completeSale, type CartLine, type PaymentInput, type SaleQuote } from '../services/sales';
+import type { CartLine, PaymentInput, SaleQuote } from '../services/sales';
 
 export type OfflineSalePayload = {
   organizationId: string;
@@ -113,6 +113,7 @@ function classifySaleError(error: unknown): ReplayResult {
 }
 
 export async function replayPendingSales(outbox: OutboxStore) {
+  const { completeSale } = await import('../services/sales');
   const coordinator = new SyncCoordinator(outbox, {
     SALE: async (operation: OutboxOperation) => {
       const payload = operation.payload as OfflineSalePayload;
