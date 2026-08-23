@@ -1,7 +1,7 @@
 import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxStore, createOutboxId, type OutboxOperation } from './outbox';
-import { SyncCoordinator, type ReplayOutcome } from './sync';
+import { SyncCoordinator, type ReplayResult } from './sync';
 import { completeSale, type CartLine, type PaymentInput, type SaleQuote } from '@/services/sales';
 
 export type OfflineSalePayload = {
@@ -94,7 +94,7 @@ export function pendingSaleReservations(outbox: OutboxStore, organizationId: str
   return reserved;
 }
 
-function classifySaleError(error: unknown): ReplayOutcome {
+function classifySaleError(error: unknown): ReplayResult {
   const message = error instanceof Error ? error.message : String(error);
   const upper = message.toUpperCase();
   const deterministic = [
@@ -109,7 +109,7 @@ function classifySaleError(error: unknown): ReplayOutcome {
   ].find((token) => upper.includes(token));
 
   if (deterministic) return { status: 'CONFLICT', errorCode: deterministic };
-  return { status: 'FAILED', errorCode: 'NETWORK_OR_SERVER_ERROR' };
+  return { status: 'FAILED', errorCode: 'NETWORK_OR_SERVER_ERROR', retryable: true };
 }
 
 export async function replayPendingSales(outbox: OutboxStore) {
