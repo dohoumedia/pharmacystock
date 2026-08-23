@@ -22,6 +22,7 @@ on conflict (id) do nothing;
 insert into public.branches(id,organization_id,name,code,country_code,timezone)
 values
 ('caaaaaaa-1111-1111-1111-aaaaaaaaaaaa','caaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','A Main','MAIN','CI','Africa/Abidjan'),
+('caaaaaaa-2222-2222-2222-aaaaaaaaaaaa','caaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','A Secondary','SECONDARY','CI','Africa/Abidjan'),
 ('cbbbbbbb-1111-1111-1111-bbbbbbbbbbbb','cbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','B Main','MAIN','SN','Africa/Dakar')
 on conflict (id) do nothing;
 
@@ -95,12 +96,37 @@ begin
   end if;
 end $$;
 
+-- A manager may not silently expand their own explicit branch membership.
+do $$
+begin
+  begin
+    insert into public.branch_memberships(branch_id, organization_membership_id)
+    values ('caaaaaaa-2222-2222-2222-aaaaaaaaaaaa','ca100000-0000-0000-0000-000000000002');
+    raise exception 'RBAC-T-006 failed: manager assigned own branch membership';
+  exception
+    when insufficient_privilege then null;
+    when check_violation then null;
+  end;
+end $$;
+
+-- A cashier sees only explicitly assigned branches, while managers can administer all branches.
+select set_config('request.jwt.claim.sub','31000000-0000-0000-0000-000000000003',true);
+do $$
+begin
+  if not exists(select 1 from public.branches where id='caaaaaaa-1111-1111-1111-aaaaaaaaaaaa') then
+    raise exception 'RBAC-T-007 failed: cashier cannot read assigned branch';
+  end if;
+  if exists(select 1 from public.branches where id='caaaaaaa-2222-2222-2222-aaaaaaaaaaaa') then
+    raise exception 'RBAC-T-008 failed: cashier can read unassigned branch';
+  end if;
+end $$;
+
 -- Outsider cannot see Pharmacy A.
 select set_config('request.jwt.claim.sub','32000000-0000-0000-0000-000000000001',true);
 do $$
 begin
   if exists(select 1 from public.organizations where id='caaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') then
-    raise exception 'RBAC-T-006 failed: outsider can read foreign organization';
+    raise exception 'RBAC-T-009 failed: outsider can read foreign organization';
   end if;
 end $$;
 
@@ -113,10 +139,10 @@ select set_config('request.jwt.claim.sub','31000000-0000-0000-0000-000000000003'
 do $$
 begin
   if app_private.is_org_member('caaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') then
-    raise exception 'RBAC-T-007 failed: suspended member still has org access';
+    raise exception 'RBAC-T-010 failed: suspended member still has org access';
   end if;
   if exists(select 1 from public.organizations where id='caaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') then
-    raise exception 'RBAC-T-008 failed: suspended member can still read organization';
+    raise exception 'RBAC-T-011 failed: suspended member can still read organization';
   end if;
 end $$;
 
