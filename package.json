@@ -24,15 +24,15 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-i18next": "17.0.12",
-    "react-native": "0.86.0",
-    "react-native-safe-area-context": "latest",
-    "react-native-screens": "latest",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
     "react-native-url-polyfill": "latest",
-    "react-native-web": "0.21.0"
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/react": "latest",
-    "typescript": "latest",
+    "typescript": "~6.0.3",
     "vitest": "latest"
   },
   "engines": {
