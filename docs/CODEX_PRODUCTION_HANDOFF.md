@@ -4,7 +4,7 @@
 
 Repository: `dohoumedia/pharmacystock`
 
-Current productionization baseline on `main` is merge commit `3877ae656e684d0d111e0062e7f9c22d136e4d7a` after PR #17.
+Current productionization baseline for this slice is merge commit `c5d81de7fffe19ec19fac495ca0777950e54c68f` after PR #19.
 
 Supabase production project:
 - Name: `Pharmacy Stock`
@@ -83,6 +83,22 @@ Do not repeat these slices. Build on them.
 - stable idempotency retained across retries
 - single-flight replay per coordinator instance
 - tests for missing handlers, backoff, stale-sync recovery
+
+### PR #19: responsive shell and global sync status
+- authenticated desktop sidebar, adaptive tablet rail, and mobile bottom navigation
+- global Offline / Syncing / Synced / Pending / Conflict status surface
+- outbox status subscriptions across store instances
+- explicit Expo ESLint configuration and deterministic npm lockfile
+
+### Current slice: offline-aware inventory and batch views
+- branch-scoped cached inventory balances and immutable movement reads
+- cache-first batch/product reads with visible freshness and stale/offline states
+- responsive inventory and batch tables/cards across desktop, tablet, and mobile
+- localized safety status for expired, quarantined, recalled, depleted, and disposed batches
+- cached permission snapshots remain read hints; mutations require online, freshly synchronized authorization context
+- server ledger, RLS, and FEFO rules remain authoritative
+
+Traceability: PRD-001, PRD-016, BAT-FR-002 through BAT-FR-005, STK-FR-001 through STK-FR-005, BR-001 through BR-006.
 
 ## Non-negotiable backend invariants
 
