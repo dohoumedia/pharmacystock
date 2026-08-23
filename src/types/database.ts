@@ -57,9 +57,56 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['audit_logs']['Insert']>;
         Relationships: [];
       };
+      categories: {
+        Row: { id: string; organization_id: string; name: string; description: string | null; status: string; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id: string; name: string; description?: string | null; status?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Database['public']['Tables']['categories']['Insert']>;
+        Relationships: [];
+      };
+      manufacturers: {
+        Row: { id: string; organization_id: string; name: string; country_code: string | null; status: string; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id: string; name: string; country_code?: string | null; status?: string; created_at?: string; updated_at?: string };
+        Update: Partial<Database['public']['Tables']['manufacturers']['Insert']>;
+        Relationships: [];
+      };
+      products: {
+        Row: { id: string; organization_id: string; category_id: string | null; manufacturer_id: string | null; name: string; generic_name: string | null; brand_name: string | null; strength: string | null; dosage_form: string | null; package_size: string | null; sku: string | null; status: string; archived_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id: string; category_id?: string | null; manufacturer_id?: string | null; name: string; generic_name?: string | null; brand_name?: string | null; strength?: string | null; dosage_form?: string | null; package_size?: string | null; sku?: string | null; status?: string; archived_at?: string | null; created_at?: string; updated_at?: string };
+        Update: Partial<Database['public']['Tables']['products']['Insert']>;
+        Relationships: [];
+      };
+      product_barcodes: {
+        Row: { id: string; organization_id: string; product_id: string; barcode: string; is_primary: boolean; created_at: string };
+        Insert: { id?: string; organization_id: string; product_id: string; barcode: string; is_primary?: boolean; created_at?: string };
+        Update: Partial<Database['public']['Tables']['product_barcodes']['Insert']>;
+        Relationships: [];
+      };
+      batches: {
+        Row: { id: string; organization_id: string; branch_id: string; product_id: string; lot_number: string; expiry_date: string; purchase_cost: number | null; selling_price: number | null; status: string; notes: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id: string; branch_id: string; product_id: string; lot_number: string; expiry_date: string; purchase_cost?: number | null; selling_price?: number | null; status?: string; notes?: string | null; created_at?: string; updated_at?: string };
+        Update: Partial<Database['public']['Tables']['batches']['Insert']>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_product_with_barcode: {
+        Args: {
+          p_organization_id: string;
+          p_name: string;
+          p_generic_name?: string | null;
+          p_brand_name?: string | null;
+          p_strength?: string | null;
+          p_dosage_form?: string | null;
+          p_package_size?: string | null;
+          p_sku?: string | null;
+          p_category_id?: string | null;
+          p_manufacturer_id?: string | null;
+          p_barcode?: string | null;
+        };
+        Returns: string;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
