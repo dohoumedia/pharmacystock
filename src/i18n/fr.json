@@ -59,7 +59,7 @@
     "products": "Produits",
     "productsSubtitle": "Recherchez et gérez le catalogue des produits de la pharmacie.",
     "batches": "Lots",
-    "batchesSubtitle": "Suivez l’identité des lots et leur péremption par succursale. Les quantités seront ajoutées par le grand livre de stock au Sprint 3.",
+    "batchesSubtitle": "Suivez l’identité des lots et leur péremption par succursale. Les quantités sont maintenues par le grand livre de stock.",
     "search": "Rechercher par produit, générique, marque ou SKU",
     "addProduct": "Ajouter un produit",
     "name": "Nom du produit",
@@ -92,5 +92,25 @@
     "barcodeExists": "Ce code-barres est déjà attribué à un autre produit actif.",
     "manageProducts": "Gérer les produits",
     "manageBatches": "Gérer les lots"
+  },
+  "inventory": {
+    "title": "Stock",
+    "subtitle": "Mouvements immuables, soldes en temps réel et rapprochement des inventaires physiques par succursale.",
+    "manage": "Gérer le stock",
+    "balances": "Soldes actuels",
+    "onHand": "En stock",
+    "noStock": "Aucun mouvement de stock n’a encore été enregistré pour cette succursale.",
+    "adjustment": "Ajustement de stock",
+    "increase": "Augmenter le stock",
+    "decrease": "Diminuer le stock",
+    "quantity": "Quantité",
+    "reason": "Motif de l’ajustement",
+    "postAdjustment": "Enregistrer l’ajustement",
+    "insufficientStock": "Ce mouvement rendrait le stock négatif et a été bloqué.",
+    "stockCount": "Inventaire physique",
+    "counted": "Qté comptée",
+    "reconcile": "Rapprocher l’inventaire",
+    "recentMovements": "Mouvements récents",
+    "noMovements": "Aucun mouvement de stock pour le moment."
   }
 }

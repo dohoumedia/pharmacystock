@@ -114,7 +114,10 @@ export default function HomeScreen() {
                   <Text style={styles.meta}>{t('organization.permissions')}: {permissions.length}</Text>
                   <View style={styles.actions}>
                     {can('inventory.read') ? (
-                      <Link href="/products" asChild><Pressable accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>{t('catalog.manageProducts')}</Text></Pressable></Link>
+                      <Link href="/inventory" asChild><Pressable accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>{t('inventory.manage')}</Text></Pressable></Link>
+                    ) : null}
+                    {can('inventory.read') ? (
+                      <Link href="/products" asChild><Pressable accessibilityRole="button" style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('catalog.manageProducts')}</Text></Pressable></Link>
                     ) : null}
                     {can('inventory.read') ? (
                       <Link href="/batches" asChild><Pressable accessibilityRole="button" style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('catalog.manageBatches')}</Text></Pressable></Link>

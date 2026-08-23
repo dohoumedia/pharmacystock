@@ -59,7 +59,7 @@
     "products": "Products",
     "productsSubtitle": "Search and maintain the pharmacy product catalogue.",
     "batches": "Batches",
-    "batchesSubtitle": "Track lot identity and expiry by branch. Quantities are added by the inventory ledger in Sprint 3.",
+    "batchesSubtitle": "Track lot identity and expiry by branch. Quantities are maintained by the inventory ledger.",
     "search": "Search by product, generic name, brand or SKU",
     "addProduct": "Add product",
     "name": "Product name",
@@ -92,5 +92,25 @@
     "barcodeExists": "This barcode is already assigned to another active product.",
     "manageProducts": "Manage products",
     "manageBatches": "Manage batches"
+  },
+  "inventory": {
+    "title": "Inventory",
+    "subtitle": "Immutable stock movements, live balances and physical count reconciliation by branch.",
+    "manage": "Manage inventory",
+    "balances": "Current balances",
+    "onHand": "On hand",
+    "noStock": "No stock movements have been posted for this branch yet.",
+    "adjustment": "Inventory adjustment",
+    "increase": "Increase stock",
+    "decrease": "Decrease stock",
+    "quantity": "Quantity",
+    "reason": "Reason for adjustment",
+    "postAdjustment": "Post adjustment",
+    "insufficientStock": "This movement would make stock negative and was blocked.",
+    "stockCount": "Physical stock count",
+    "counted": "Counted qty",
+    "reconcile": "Reconcile count",
+    "recentMovements": "Recent movements",
+    "noMovements": "No inventory movements yet."
   }
 }

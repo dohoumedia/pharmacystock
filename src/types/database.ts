@@ -87,23 +87,50 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['batches']['Insert']>;
         Relationships: [];
       };
+      inventory_movements: {
+        Row: { id: string; organization_id: string; branch_id: string; batch_id: string; movement_type: string; quantity_delta: number; unit_cost: number | null; reference_type: string | null; reference_id: string | null; idempotency_key: string; reason: string | null; metadata: Json; occurred_at: string; created_at: string; created_by: string };
+        Insert: { id?: string; organization_id: string; branch_id: string; batch_id: string; movement_type: string; quantity_delta: number; unit_cost?: number | null; reference_type?: string | null; reference_id?: string | null; idempotency_key: string; reason?: string | null; metadata?: Json; occurred_at?: string; created_at?: string; created_by?: string };
+        Update: never;
+        Relationships: [];
+      };
+      inventory_stock_counts: {
+        Row: { id: string; organization_id: string; branch_id: string; status: string; notes: string | null; counted_at: string | null; created_by: string; completed_by: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id: string; branch_id: string; status?: string; notes?: string | null; counted_at?: string | null; created_by?: string; completed_by?: string | null; created_at?: string; updated_at?: string };
+        Update: { status?: string; notes?: string | null; counted_at?: string | null; completed_by?: string | null; updated_at?: string };
+        Relationships: [];
+      };
+      inventory_stock_count_lines: {
+        Row: { id: string; stock_count_id: string; organization_id: string; branch_id: string; batch_id: string; expected_quantity: number; counted_quantity: number; created_at: string; updated_at: string };
+        Insert: { id?: string; stock_count_id: string; organization_id: string; branch_id: string; batch_id: string; expected_quantity?: number; counted_quantity: number; created_at?: string; updated_at?: string };
+        Update: { counted_quantity?: number; expected_quantity?: number; updated_at?: string };
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      inventory_balances: {
+        Row: { organization_id: string; branch_id: string; batch_id: string; product_id: string; on_hand_quantity: number; reserved_quantity: number; available_quantity: number; last_movement_at: string | null };
+        Relationships: [];
+      };
+    };
     Functions: {
       create_product_with_barcode: {
         Args: {
-          p_organization_id: string;
-          p_name: string;
-          p_generic_name?: string | null;
-          p_brand_name?: string | null;
-          p_strength?: string | null;
-          p_dosage_form?: string | null;
-          p_package_size?: string | null;
-          p_sku?: string | null;
-          p_category_id?: string | null;
-          p_manufacturer_id?: string | null;
-          p_barcode?: string | null;
+          p_organization_id: string; p_name: string; p_generic_name?: string | null; p_brand_name?: string | null;
+          p_strength?: string | null; p_dosage_form?: string | null; p_package_size?: string | null; p_sku?: string | null;
+          p_category_id?: string | null; p_manufacturer_id?: string | null; p_barcode?: string | null;
         };
+        Returns: string;
+      };
+      post_inventory_movement: {
+        Args: {
+          p_organization_id: string; p_branch_id: string; p_batch_id: string; p_movement_type: string;
+          p_quantity_delta: number; p_idempotency_key: string; p_reason?: string | null; p_reference_type?: string | null;
+          p_reference_id?: string | null; p_unit_cost?: number | null; p_metadata?: Json; p_occurred_at?: string;
+        };
+        Returns: string;
+      };
+      complete_inventory_stock_count: {
+        Args: { p_stock_count_id: string };
         Returns: string;
       };
     };
