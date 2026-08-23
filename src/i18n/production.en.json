@@ -79,6 +79,26 @@
       "depleted": "Depleted",
       "disposed": "Disposed",
       "unknown": "Unavailable"
+    },
+    "reports": {
+      "refreshFailed": "The server refresh failed. Showing the last synchronized report data when available."
+    },
+    "customers": {
+      "addTitle": "New customer",
+      "onlineOnly": "Creating and archiving customers requires an online server authorization check.",
+      "refreshFailed": "The server refresh failed. Showing the last synchronized customers when available.",
+      "archiveTitle": "Archive customer?",
+      "archiveConfirm": "Archive {{name}}? Their completed transaction history will be preserved."
+    },
+    "settings": {
+      "onlineOnly": "Settings changes require an online server authorization check.",
+      "payment": {
+        "CASH": "Cash",
+        "CARD": "Card",
+        "MOBILE_MONEY": "Mobile money",
+        "BANK_TRANSFER": "Bank transfer",
+        "OTHER": "Other"
+      }
     }
   }
 }

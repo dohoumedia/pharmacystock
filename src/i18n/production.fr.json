@@ -79,6 +79,26 @@
       "depleted": "Épuisé",
       "disposed": "Mis au rebut",
       "unknown": "Indisponible"
+    },
+    "reports": {
+      "refreshFailed": "L’actualisation du serveur a échoué. Les dernières données de rapport synchronisées sont affichées si disponibles."
+    },
+    "customers": {
+      "addTitle": "Nouveau client",
+      "onlineOnly": "La création et l’archivage de clients nécessitent un contrôle d’autorisation du serveur en ligne.",
+      "refreshFailed": "L’actualisation du serveur a échoué. Les derniers clients synchronisés sont affichés si disponibles.",
+      "archiveTitle": "Archiver le client ?",
+      "archiveConfirm": "Archiver {{name}} ? Son historique de transactions terminées sera conservé."
+    },
+    "settings": {
+      "onlineOnly": "Les modifications des paramètres nécessitent un contrôle d’autorisation du serveur en ligne.",
+      "payment": {
+        "CASH": "Espèces",
+        "CARD": "Carte",
+        "MOBILE_MONEY": "Mobile money",
+        "BANK_TRANSFER": "Virement bancaire",
+        "OTHER": "Autre"
+      }
     }
   }
 }
