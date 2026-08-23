@@ -1,16 +1,17 @@
 import '@/i18n';
 import { Stack } from 'expo-router';
-import { View } from 'react-native';
-import { ConnectivityBanner } from '@/components/ConnectivityBanner';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppShell } from '@/components/AppShell';
 import { AppProviders } from '@/providers/AppProviders';
 
 export default function RootLayout() {
   return (
     <AppProviders>
-      <View style={{ flex: 1 }}>
-        <ConnectivityBanner />
-        <Stack screenOptions={{ headerShown: false }} />
-      </View>
+      <SafeAreaProvider>
+        <AppShell>
+          <Stack screenOptions={{ headerShown: false }} />
+        </AppShell>
+      </SafeAreaProvider>
     </AppProviders>
   );
 }

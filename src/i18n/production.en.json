@@ -4,6 +4,41 @@
       "checking": "Checking connection…",
       "offline": "Offline mode. Cached data may be stale and queued changes will sync when connectivity returns.",
       "retry": "Retry"
+    },
+    "sync": {
+      "checking": "Checking connection",
+      "offline": "Offline",
+      "syncing_one": "Syncing {{count}} change…",
+      "syncing_other": "Syncing {{count}} changes…",
+      "conflict_one": "{{count}} conflict needs attention",
+      "conflict_other": "{{count}} conflicts need attention",
+      "pending_one": "{{count}} change pending",
+      "pending_other": "{{count}} changes pending",
+      "synced": "Online · Synced",
+      "retryHint": "Checks the connection again.",
+      "short": {
+        "checking": "Checking",
+        "offline": "Offline",
+        "syncing": "Syncing {{count}}",
+        "conflict": "{{count}} conflict",
+        "pending": "{{count}} pending",
+        "synced": "Synced"
+      }
+    },
+    "navigation": {
+      "home": "Home",
+      "pos": "POS",
+      "inventory": "Inventory",
+      "purchasing": "Purchasing",
+      "expiry": "Expiry",
+      "transfers": "Transfers",
+      "reports": "Reports",
+      "customers": "Customers",
+      "products": "Products",
+      "batches": "Batches",
+      "operations": "More",
+      "manage": "Manage",
+      "noContext": "Select a pharmacy and branch"
     }
   }
 }

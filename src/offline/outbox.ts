@@ -24,6 +24,11 @@ type PersistedOutbox = {
 };
 
 const KEY = 'operations';
+const listeners = new Set<() => void>();
+
+function notifyListeners() {
+  for (const listener of listeners) listener();
+}
 
 function sortOperations(operations: OutboxOperation[]) {
   return [...operations].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
@@ -99,11 +104,18 @@ export class OutboxStore {
 
   clear(): void {
     this.storage.remove(KEY);
+    notifyListeners();
+  }
+
+  subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
   }
 
   private write(operations: OutboxOperation[]): void {
     const value: PersistedOutbox = { version: 1, operations: sortOperations(operations) };
     this.storage.set(KEY, JSON.stringify(value));
+    notifyListeners();
   }
 }
 

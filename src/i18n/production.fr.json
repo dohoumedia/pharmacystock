@@ -4,6 +4,41 @@
       "checking": "Vérification de la connexion…",
       "offline": "Mode hors ligne. Les données en cache peuvent être anciennes et les changements en attente seront synchronisés au retour de la connexion.",
       "retry": "Réessayer"
+    },
+    "sync": {
+      "checking": "Vérification de la connexion",
+      "offline": "Hors ligne",
+      "syncing_one": "Synchronisation de {{count}} modification…",
+      "syncing_other": "Synchronisation de {{count}} modifications…",
+      "conflict_one": "{{count}} conflit à résoudre",
+      "conflict_other": "{{count}} conflits à résoudre",
+      "pending_one": "{{count}} modification en attente",
+      "pending_other": "{{count}} modifications en attente",
+      "synced": "En ligne · Synchronisé",
+      "retryHint": "Vérifie à nouveau la connexion.",
+      "short": {
+        "checking": "Vérification",
+        "offline": "Hors ligne",
+        "syncing": "Synchro. {{count}}",
+        "conflict": "{{count}} conflit",
+        "pending": "{{count}} en attente",
+        "synced": "Synchronisé"
+      }
+    },
+    "navigation": {
+      "home": "Accueil",
+      "pos": "Caisse",
+      "inventory": "Stock",
+      "purchasing": "Achats",
+      "expiry": "Péremption",
+      "transfers": "Transferts",
+      "reports": "Rapports",
+      "customers": "Clients",
+      "products": "Produits",
+      "batches": "Lots",
+      "operations": "Plus",
+      "manage": "Gestion",
+      "noContext": "Sélectionnez une pharmacie et une agence"
     }
   }
 }
