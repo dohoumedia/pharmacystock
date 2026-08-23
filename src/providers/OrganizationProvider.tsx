@@ -88,7 +88,10 @@ export function OrganizationProvider({ children }: PropsWithChildren) {
   }, [organizationId, user]);
 
   useEffect(() => {
-    void refresh();
+    const timer = setTimeout(() => {
+      void refresh();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [refresh]);
 
   const setOrganizationId = (id: string) => {
