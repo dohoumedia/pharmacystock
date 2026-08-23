@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "DohouLabs Pharmacy Stock",
+    "slug": "dohoulabs-pharmacy-stock",
+    "scheme": "pharmacystock",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dohoulabs.pharmacystock"
+    },
+    "android": {
+      "package": "com.dohoulabs.pharmacystock"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-localization"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "supportedLocales": ["en", "fr"]
+    }
+  }
+}
