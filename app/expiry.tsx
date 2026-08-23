@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { ReadModelStatus } from '@/components/ReadModelStatus';
+import { LocalStore } from '@/offline/localStore';
+import { cacheExpiryReadModel, getCachedExpiryReadModel } from '@/offline/expiryTransfersReadModels';
+import { isSnapshotStale, OPERATIONAL_READ_MODEL_MAX_AGE_MS } from '@/offline/readModels';
+import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
 import {
   acknowledgeExpiryAlert,
@@ -19,8 +24,11 @@ import {
   type ExpiryRisk,
 } from '@/services/expiry';
 
+const localStore = new LocalStore();
+
 export default function ExpiryScreen() {
   const { t } = useTranslation();
+  const { isOnline } = useConnectivity();
   const { organization, branch, branches, setBranchId, can } = useOrganization();
   const [risk, setRisk] = useState<ExpiryRisk[]>([]);
   const [alerts, setAlerts] = useState<ExpiryAlert[]>([]);
@@ -33,6 +41,8 @@ export default function ExpiryScreen() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [usingCachedData, setUsingCachedData] = useState(false);
 
   const canRead = can('inventory.read');
   const canManage = can('inventory.expiry.manage');
@@ -40,6 +50,13 @@ export default function ExpiryScreen() {
 
   const refresh = async () => {
     if (!organization || !branch || !canRead) return;
+    const cached = getCachedExpiryReadModel(localStore, organization.id, branch.id);
+    if (cached) {
+      setRisk(cached.data.risk); setAlerts(cached.data.alerts); setActions(cached.data.actions);
+      if (cached.data.policy) setThresholds(cached.data.policy.thresholds_days.join(', '));
+      setSyncedAt(cached.syncedAt); setUsingCachedData(true);
+    }
+    if (!isOnline) { if (!cached) setError(t('production.readModel.noCachedData')); return; }
     setLoading(true);
     setError(null);
     try {
@@ -53,6 +70,8 @@ export default function ExpiryScreen() {
       setRisk(nextRisk);
       setAlerts(nextAlerts);
       setActions(nextActions);
+      cacheExpiryReadModel(localStore, organization.id, branch.id, { risk: nextRisk, alerts: nextAlerts, actions: nextActions, policy });
+      setSyncedAt(new Date().toISOString()); setUsingCachedData(false);
       if (policy) setThresholds(policy.thresholds_days.join(', '));
       setSelectedBatchId((current) => current && nextRisk.some((item) => item.batch_id === current) ? current : nextRisk[0]?.batch_id ?? null);
     } catch (cause) {
@@ -65,7 +84,7 @@ export default function ExpiryScreen() {
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(timer);
-  }, [organization?.id, branch?.id, canRead]);
+  }, [organization?.id, branch?.id, canRead, isOnline]);
 
   const byBatch = useMemo(() => new Map(risk.map((item) => [item.batch_id, item])), [risk]);
   const selected = selectedBatchId ? byBatch.get(selectedBatchId) ?? null : null;
@@ -77,7 +96,7 @@ export default function ExpiryScreen() {
   const valueAtRisk = useMemo(() => risk.filter((item) => item.risk_bucket !== 'OK').reduce((sum, item) => sum + Number(item.value_at_risk ?? 0), 0), [risk]);
 
   const runAction = async (action: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE') => {
-    if (!selected?.batch_id) return;
+    if (!selected?.batch_id || !isOnline) return;
     setSaving(true); setError(null);
     try {
       await recordExpiryAction(selected.batch_id, action, reason);
@@ -89,7 +108,7 @@ export default function ExpiryScreen() {
   };
 
   const submitReturn = async () => {
-    if (!selected?.batch_id) return;
+    if (!selected?.batch_id || !isOnline) return;
     const quantity = Number(returnQuantity);
     const onHand = Number(selected.on_hand_quantity ?? 0);
     if (!Number.isFinite(quantity) || quantity <= 0 || quantity > onHand) return;
@@ -103,7 +122,7 @@ export default function ExpiryScreen() {
   };
 
   const submitDispose = async () => {
-    if (!selected?.batch_id) return;
+    if (!selected?.batch_id || !isOnline) return;
     if (!confirmDispose) { setConfirmDispose(true); return; }
     setSaving(true); setError(null);
     try {
@@ -115,7 +134,7 @@ export default function ExpiryScreen() {
   };
 
   const submitPolicy = async () => {
-    if (!organization) return;
+    if (!organization || !isOnline) return;
     const parsed = thresholds.split(',').map((item) => Number(item.trim())).filter((value) => Number.isInteger(value) && value > 0);
     setSaving(true); setError(null);
     try {
@@ -148,7 +167,8 @@ export default function ExpiryScreen() {
         <Text style={styles.label}>{t('organization.branch')}</Text>
         <View style={styles.chips}>{branches.map((item) => <Pressable key={item.id} onPress={() => setBranchId(item.id)} style={[styles.chip, item.id === branch?.id && styles.chipSelected]}><Text style={[styles.chipText, item.id === branch?.id && styles.chipTextSelected]}>{item.name}</Text></Pressable>)}</View>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        {loading ? <Text style={styles.meta}>{t('common.loading')}</Text> : null}
+        <ReadModelStatus loading={loading} usingCachedData={usingCachedData} stale={isSnapshotStale(syncedAt ? { data: null, syncedAt } : null, OPERATIONAL_READ_MODEL_MAX_AGE_MS)} syncedAt={syncedAt} hasData={risk.length + alerts.length + actions.length > 0} />
+        {!isOnline ? <Text accessibilityRole="alert" style={styles.error}>{t('production.inventoryView.offlineReadOnly')}</Text> : null}
 
         <View style={styles.metricGrid}>
           {['EXPIRED','7_DAYS','30_DAYS','60_DAYS','90_DAYS','180_DAYS'].map((bucket) => <View key={bucket} style={styles.metric}><Text style={styles.metricValue}>{counts[bucket] ?? 0}</Text><Text style={styles.meta}>{t(`expiry.bucket.${bucket}`)}</Text></View>)}

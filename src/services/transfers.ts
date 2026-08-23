@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { isTransferBatchEligible } from '@/domain/transferSafety';
 
 export type StockTransfer = {
   id:string; organization_id:string; source_branch_id:string; destination_branch_id:string;
@@ -47,7 +48,8 @@ export async function loadTransferableBatches(organizationId:string,branchId:str
   ]);
   if(pe)throw pe;if(be)throw be;
   const names=new Map((products??[]).map(p=>[p.id,p.name])); const qty=new Map((balances??[]).map(b=>[b.batch_id??'',Number(b.available_quantity??0)]));
-  return (batches??[]).map(b=>({...b,product:{name:names.get(b.product_id)??b.product_id},balance:qty.get(b.id)??0})).filter(b=>(b.balance??0)>0);
+  const today=new Date().toISOString().slice(0,10);
+  return (batches??[]).map(b=>({...b,product:{name:names.get(b.product_id)??b.product_id},balance:qty.get(b.id)??0})).filter(b=>isTransferBatchEligible(b,today));
 }
 export async function createStockTransfer(input:{organizationId:string;sourceBranchId:string;destinationBranchId:string;transferNumber:string;lines:{source_batch_id:string;quantity:number}[];idempotencyKey:string;notes?:string}):Promise<string>{
  const{data,error}=await db.rpc('create_stock_transfer',{p_organization_id:input.organizationId,p_source_branch_id:input.sourceBranchId,p_destination_branch_id:input.destinationBranchId,p_transfer_number:input.transferNumber,p_lines:input.lines,p_idempotency_key:input.idempotencyKey,p_notes:input.notes?.trim()||null}); if(error)throw error; return data;
