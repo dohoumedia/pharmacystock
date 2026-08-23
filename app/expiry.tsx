@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +48,7 @@ export default function ExpiryScreen() {
   const canManage = can('inventory.expiry.manage');
   const canDispose = can('inventory.dispose');
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!organization || !branch || !canRead) return;
     const cached = getCachedExpiryReadModel(localStore, organization.id, branch.id);
     if (cached) {
@@ -79,12 +79,12 @@ export default function ExpiryScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [branch, canRead, isOnline, organization, t]);
 
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(timer);
-  }, [organization?.id, branch?.id, canRead, isOnline]);
+  }, [refresh]);
 
   const byBatch = useMemo(() => new Map(risk.map((item) => [item.batch_id, item])), [risk]);
   const selected = selectedBatchId ? byBatch.get(selectedBatchId) ?? null : null;
