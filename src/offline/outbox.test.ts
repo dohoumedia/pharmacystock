@@ -32,6 +32,23 @@ describe('offline outbox', () => {
     expect(new OutboxStore(storage).list()[0]?.idempotencyKey).toBe('stable-key-1');
   });
 
+  it('notifies global status subscribers when another store instance changes the outbox', () => {
+    const storage = memoryStorage();
+    const statusStore = new OutboxStore(storage);
+    const writer = new OutboxStore(storage);
+    let changes = 0;
+    const unsubscribe = statusStore.subscribe(() => {
+      changes += 1;
+    });
+
+    writer.enqueue({ id: 'sale-1', kind: 'SALE', organizationId: 'org', idempotencyKey: 'sale-key', payload: {}, createdAt: '2026-08-23T18:00:00.000Z' });
+    writer.update('sale-1', { status: 'CONFLICT', lastErrorCode: 'INSUFFICIENT_STOCK' });
+    unsubscribe();
+    writer.clear();
+
+    expect(changes).toBe(2);
+  });
+
   it('replays in creation order and preserves the same idempotency key', async () => {
     const storage = memoryStorage();
     const outbox = new OutboxStore(storage);
