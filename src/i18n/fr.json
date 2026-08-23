@@ -10,18 +10,49 @@
     "cancel": "Annuler",
     "language": "Langue",
     "english": "Anglais",
-    "french": "Français"
+    "french": "Français",
+    "active": "Actif",
+    "suspended": "Suspendu",
+    "noData": "Aucune donnée disponible"
   },
   "auth": {
     "signIn": "Se connecter",
     "signOut": "Se déconnecter",
     "email": "E-mail",
-    "password": "Mot de passe"
+    "password": "Mot de passe",
+    "signedOut": "Déconnecté"
   },
   "foundation": {
     "title": "Fondation prête",
-    "subtitle": "L’authentification, la gestion multi-pharmacie, la sécurité et l’infrastructure bilingue sont préparées avant l’activation des modules opérationnels.",
+    "subtitle": "L’authentification, la gestion multi-pharmacie, la sécurité et l’infrastructure bilingue sont prêtes pour les modules opérationnels.",
     "database": "Fondation Supabase",
     "platforms": "Web · iOS · Android"
+  },
+  "organization": {
+    "title": "Organisation",
+    "branch": "Succursale",
+    "role": "Rôle",
+    "permissions": "Autorisations",
+    "noOrganization": "Aucune organisation de pharmacie active n’est attribuée à ce compte.",
+    "manageStaff": "Gérer le personnel",
+    "manageBranches": "Gérer les succursales",
+    "staffTitle": "Personnel et accès",
+    "staffSubtitle": "Consultez les rôles, le statut des comptes et l’accès aux succursales.",
+    "branchesTitle": "Succursales",
+    "branchesSubtitle": "Gérez les points de vente et l’identité de chaque succursale.",
+    "addBranch": "Ajouter une succursale",
+    "branchName": "Nom de la succursale",
+    "branchCode": "Code de la succursale",
+    "city": "Ville",
+    "phone": "Téléphone",
+    "branchAccess": "Accès aux succursales",
+    "allBranches": "Toutes les succursales",
+    "unknownUser": "Utilisateur sans nom",
+    "noRole": "Aucun rôle attribué",
+    "cannotManage": "Votre rôle ne permet pas de gérer le personnel.",
+    "back": "Retour au tableau de bord",
+    "refresh": "Actualiser",
+    "status": "Statut",
+    "securityNote": "Les autorisations sont appliquées par la sécurité RLS de Supabase, pas uniquement par cet écran."
   }
 }

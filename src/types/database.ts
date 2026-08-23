@@ -59,11 +59,7 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: {
-      is_org_member: { Args: { target_org: string }; Returns: boolean };
-      has_branch_access: { Args: { target_branch: string }; Returns: boolean };
-      has_permission: { Args: { target_org: string; permission: string }; Returns: boolean };
-    };
+    Functions: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
