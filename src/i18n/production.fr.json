@@ -1,0 +1,9 @@
+{
+  "production": {
+    "connectivity": {
+      "checking": "Vérification de la connexion…",
+      "offline": "Mode hors ligne. Les données en cache peuvent être anciennes et les changements en attente seront synchronisés au retour de la connexion.",
+      "retry": "Réessayer"
+    }
+  }
+}

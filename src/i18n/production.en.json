@@ -1,0 +1,9 @@
+{
+  "production": {
+    "connectivity": {
+      "checking": "Checking connection…",
+      "offline": "Offline mode. Cached data may be stale and queued changes will sync when connectivity returns.",
+      "retry": "Retry"
+    }
+  }
+}

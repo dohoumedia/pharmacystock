@@ -3,6 +3,53 @@
 ## Product experience goal
 Create one coherent pharmacy operations product with platform-appropriate presentation across desktop Web, tablet/mobile Web/PWA, iOS and Android. The current screens are functional references, not the final design ceiling.
 
+## Reference products reviewed
+Use these products as workflow and interaction references, never as visual clones.
+
+### Sortly
+Borrow:
+- simple inventory information hierarchy
+- search-first navigation
+- compact mobile item cards
+- obvious stock/min-level presentation
+- barcode-friendly interactions
+- confidence-building offline states
+
+Do not inherit its generic-business vocabulary. Pharmacy Stock must remain pharmacy-specific.
+
+### PrimeRx / PrimeINVENTORY / PrimeRx POS
+Borrow:
+- pharmacy-specific search and stock workflows
+- rapid `search/scan → quantity → action` interactions
+- focused POS behavior
+- camera/barcode-first mobile flows
+
+Avoid a fragmented multi-app feeling. Pharmacy Stock should remain one coherent product.
+
+### PioneerRx Mobile Inventory
+Borrow:
+- shelf-side operational workflows
+- receiving, counting and barcode-first task orientation
+- mobile navigation centered on concrete pharmacy tasks
+
+Do not copy its dated visual styling. Use the workflow lessons only.
+
+### Odoo Inventory + Barcode
+Borrow:
+- responsive operational density on desktop
+- list/detail and table workflows
+- barcode-centered receipts, deliveries and transfers
+- adaptive PWA behavior across desktop and mobile
+
+Avoid ERP complexity. Progressive disclosure must keep Pharmacy Stock simpler and faster for frontline pharmacy staff.
+
+### Combined design direction
+The intended product direction is:
+
+**Sortly clarity + PrimeRx pharmacy speed + PioneerRx task focus + Odoo responsive/PWA structure.**
+
+The result must look and behave as a distinct DohouLabs Pharmacy Stock design system rather than a derivative interface.
+
 ## Design principles
 - Operational clarity beats decorative density.
 - High-frequency actions should be reachable quickly.
@@ -11,6 +58,8 @@ Create one coherent pharmacy operations product with platform-appropriate presen
 - Preserve fast scanning/keyboard workflows for pharmacy counters.
 - Mobile experiences should feel intentionally mobile, not compressed desktop pages.
 - French and English must both fit without broken layouts.
+- Connectivity state must be visible whenever stale or pending data could affect a decision.
+- Use progressive disclosure so powerful workflows do not become ERP-like clutter.
 
 ## Shared app shell
 ### Desktop Web
@@ -29,6 +78,8 @@ Collapse navigation into a narrower rail/drawer. Prefer two-column content only 
 
 ### Mobile Web/PWA + native
 Use touch-first navigation. A bottom navigation pattern is suitable for the most frequent destinations, with secondary functions in a menu/drawer. Avoid exposing every administrative route at once.
+
+Mobile primary workflows should bias toward task entry points such as Scan, Search, Receive, Count, Transfer and Sell rather than mirroring the complete desktop menu tree.
 
 ## Suggested information architecture
 Primary operational areas:
