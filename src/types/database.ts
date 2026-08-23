@@ -89,7 +89,24 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_product_with_barcode: {
+        Args: {
+          p_organization_id: string;
+          p_name: string;
+          p_generic_name?: string | null;
+          p_brand_name?: string | null;
+          p_strength?: string | null;
+          p_dosage_form?: string | null;
+          p_package_size?: string | null;
+          p_sku?: string | null;
+          p_category_id?: string | null;
+          p_manufacturer_id?: string | null;
+          p_barcode?: string | null;
+        };
+        Returns: string;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
