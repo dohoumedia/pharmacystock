@@ -86,12 +86,14 @@
     "customers": {
       "addTitle": "Nouveau client",
       "onlineOnly": "La création et l’archivage de clients nécessitent un contrôle d’autorisation du serveur en ligne.",
+      "freshAuthorizationRequired": "Les modifications des clients sont verrouillées jusqu’à la synchronisation récente de vos autorisations avec le serveur.",
       "refreshFailed": "L’actualisation du serveur a échoué. Les derniers clients synchronisés sont affichés si disponibles.",
       "archiveTitle": "Archiver le client ?",
       "archiveConfirm": "Archiver {{name}} ? Son historique de transactions terminées sera conservé."
     },
     "settings": {
       "onlineOnly": "Les modifications des paramètres nécessitent un contrôle d’autorisation du serveur en ligne.",
+      "freshAuthorizationRequired": "Les modifications sont verrouillées jusqu’à la synchronisation récente de vos autorisations avec le serveur.",
       "payment": {
         "CASH": "Espèces",
         "CARD": "Carte",
