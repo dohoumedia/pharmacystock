@@ -1,126 +1,215 @@
 # Codex Production Handoff
 
-## Stable checkpoint
-This handoff starts from `main` after Sprint 8 merge.
+## Start here
 
-- Repository: `dohoumedia/pharmacystock`
-- Stable baseline merge: `80e70e3e343ab63aeed09dedc5cf0f5d6f3e7ab8`
-- Supabase project: `Pharmacy Stock`
-- Supabase project ref: `jeravdvssuzbthkxfvjy`
-- Languages: French and English
-- Platforms: responsive Web/PWA, iOS, Android
+Repository: `dohoumedia/pharmacystock`
+
+Current productionization baseline on `main` is merge commit `3877ae656e684d0d111e0062e7f9c22d136e4d7a` after PR #17.
+
+Supabase production project:
+- Name: `Pharmacy Stock`
+- Project ref: `jeravdvssuzbthkxfvjy`
+- Region: eu-west-3
+
+Before any Supabase migration, query, advisor run, or type generation, verify the target resolves exactly to `Pharmacy Stock / jeravdvssuzbthkxfvjy`. Stop on mismatch.
+
+Read in this order:
+1. `AGENTS.md`
+2. this file
+3. `docs/UI_UX_BLUEPRINT.md`
+4. `docs/OFFLINE_FIRST_ARCHITECTURE.md`
+5. existing services, screens, migrations, and SQL tests
+
+Do not rebuild the product from scratch. Productionize the existing Expo Router application and preserve all completed Core v1 + Sprint 8 domain contracts.
 
 ## Product state through Sprint 8
+
 Implemented business domains:
-1. Organizations, branches, staff, roles and permissions.
-2. Product catalog, barcodes and physical batches/lots.
-3. Immutable inventory ledger, current balance view and stock counts.
-4. Suppliers, purchase orders and partial receiving into the inventory ledger.
-5. Expiry Center, configurable alerts, FEFO, quarantine/release, supplier returns and disposal.
-6. POS, server-authoritative prices, payments, receipts, sales history and refunds.
-7. Customers, reports, controlled imports/onboarding, notifications foundation, pharmacy settings, immutable audit logs and subscription foundation.
-8. Multi-branch stock transfer request/approve/dispatch/receive/cancel flow with discrepancies and paired inventory movements.
+1. organizations, branches, staff, roles, permissions
+2. product catalog, barcodes, physical batches/lots
+3. immutable inventory ledger, balance view, stock counts
+4. suppliers, purchase orders, receiving into the ledger
+5. expiry center, FEFO, quarantine/release, supplier returns, disposal
+6. POS, server-authoritative pricing, payments, receipts, refunds
+7. customers, reports, controlled imports, notifications foundation, pharmacy settings, immutable audit logs, subscription foundation
+8. multi-branch stock transfers with request/approve/dispatch/receive/cancel, discrepancies, and paired ledger movements
 
-## Existing application structure
-- Expo Router routes under `app/`
-- shared services under `src/services/`
-- shared providers under `src/providers/`
-- translations under `src/i18n/`
-- Supabase migration history under `supabase/migrations/`
-- SQL regression specs under `supabase/tests/`
-- generated/focused database types under `src/types/`
+## Productionization already completed
 
-Codex should improve and productionize this application rather than starting another frontend from scratch.
+Do not repeat these slices. Build on them.
 
-## Backend invariants
+### PR #12: responsive shell/connectivity/PWA foundation
+- design tokens in `src/theme/tokens.ts`
+- connectivity provider and global banner
+- EN/FR production translation resources
+- PWA manifest, offline page, service worker, Expo web HTML integration
+
+### PR #13: durable offline replica + outbox
+- `LocalStore`
+- `OutboxStore`
+- storage abstraction
+- sync coordinator foundation
+- idempotent queued operations
+- persistence tests
+
+### PR #14: offline POS pending-sale capture and replay
+- durable pending sale envelope
+- stable sale idempotency key across replay
+- pending/conflict visibility in POS
+- reconnect replay through existing `complete_sale_with_customer` RPC
+- server remains price, stock, FEFO, RLS, and ledger authority
+
+### PR #15: offline POS catalog and stock safeguards
+- cached synchronized POS catalog/search
+- cached trusted branch stock snapshot from `inventory_balances.available_quantity`
+- offline catalog search
+- freshness timestamps
+- pending same-device reservations deducted from cached available stock
+- obvious local oversell blocked before enqueue
+- server still revalidates on reconnect
+
+### PR #16: broader offline read models
+- cached organizations and organization/branch context
+- cached role/permission snapshots for offline UX only
+- cached customers, settings, products, batches
+- organization provider fallback to cached context
+- explicit cached-data/freshness metadata
+- offline customer read support with online-only mutation enforcement
+
+### PR #17: sync retry/crash hardening
+- exponential backoff for retryable failures
+- missing handlers become terminal conflicts instead of infinite retry loops
+- stale `SYNCING` operations recover after interrupted sessions
+- stable idempotency retained across retries
+- single-flight replay per coordinator instance
+- tests for missing handlers, backoff, stale-sync recovery
+
+## Non-negotiable backend invariants
+
 ### Inventory
-`public.inventory_movements` is the historical source of truth. `public.inventory_balances` is derived state. Never implement client-side direct quantity writes.
+`public.inventory_movements` is immutable and is the historical source of truth. `public.inventory_balances` is derived state.
 
-Stock-changing business operations should end in ledger movements such as purchase receipt, sale, refund/return-in, adjustment, transfer, supplier return or disposal according to the existing database rules.
+Never write inventory balances directly from the client. All stock-changing flows must resolve through existing transactional server/database paths.
 
 ### Transactions
-Critical flows are database-authoritative and transactional. Preserve existing RPC boundaries for purchasing, receiving, POS/refunds, expiry actions and stock transfers. Do not move critical consistency logic into the React client.
+Preserve existing RPC boundaries for purchasing, receiving, POS/refunds, expiry actions, stock transfers, and inventory ledger posting. Do not move critical consistency rules into React state.
 
 ### Authorization
-RLS and `app_private` permission/branch helpers are authoritative. UI permission gates improve UX but never replace database enforcement.
+RLS and `app_private` helpers are authoritative. UI permission gates improve UX but never replace database enforcement. Cached permission snapshots are navigation/read hints only and must never authorize server mutations.
 
 ### Idempotency
-Any retryable network or offline transaction must keep a stable idempotency key across retries. Generating a new key on every retry defeats the guarantee.
+Every retryable or offline mutation must retain one stable idempotency key for its full lifecycle. Never regenerate it on retry.
 
-## Productionization objective
-Transform the current functional application into a production-ready pharmacy operating system with:
-- coherent design system
-- responsive desktop/tablet/mobile Web layouts
-- native-feeling iOS and Android interaction patterns
-- robust navigation and information architecture
-- accessibility
-- loading, empty, error, offline, stale and conflict states
-- durable offline persistence and synchronization
-- installable PWA behavior
-- high-confidence tests around stock/financial/offline boundaries
+### POS safety
+Expired, quarantined, recalled, or otherwise ineligible stock must never become sellable. Preserve FEFO and server-authoritative prices. Offline stock is a last-trusted snapshot only, never live authority.
 
-## Priority user journeys
-Codex should optimize these first:
-1. Sign in and select pharmacy/branch.
-2. Search/scan a product and inspect live/cached stock.
-3. POS sale from scan/search through payment and receipt.
-4. Receive a purchase order with lots and expiry dates.
-5. Review expiry risk and execute controlled actions.
-6. Perform stock count/adjustment.
-7. Request, approve, dispatch and receive a branch transfer.
-8. Inspect daily sales, inventory value and operational alerts.
+### Conflict policy
+No silent last-write-wins for inventory-critical or financial conflicts. Server ledger wins reconciliation. Preserve local intent, mark conflicts explicitly, and require clear user resolution where needed.
 
-## Responsive Web expectations
-Desktop should not look like a stretched mobile application. Use the available width for:
-- persistent sidebar/navigation when appropriate
-- compact data tables with sortable/filterable columns
-- split panes for list/detail workflows
-- keyboard navigation and shortcuts for POS
-- dense but readable operational dashboards
+## UI/UX direction
 
-Tablet layouts should gracefully collapse side-by-side regions. Mobile browser/PWA should use touch-first layouts and the same durable offline engine as native apps.
+Use one design system with responsive expressions.
 
-## Native expectations
-On iOS and Android:
-- prefer focused task screens over oversized desktop tables
-- support safe-area behavior and native keyboard ergonomics
-- make barcode/scan workflows first-class
-- use clear bottom-sheet/modal/detail patterns where appropriate
-- preserve platform accessibility semantics
-- never duplicate domain logic just to achieve platform-specific presentation
+Design synthesis:
+- Sortly clarity
+- PrimeRx pharmacy speed
+- PioneerRx task focus
+- Odoo responsive/PWA structure
 
-## Offline objective
-Users must be able to continue meaningful work during internet loss. The target is not merely cached static pages. Implement a local persistence/sync subsystem as specified in `docs/OFFLINE_FIRST_ARCHITECTURE.md`.
+Avoid:
+- dated visual treatment
+- ERP clutter
+- fragmented app-family behavior
+- generic non-pharmacy terminology
 
-Offline support must distinguish between:
-- cached read data
-- local drafts
-- queued safe mutations
-- inventory/financial transactions pending server acceptance
-- conflicts requiring human resolution
+Desktop:
+- persistent side navigation where appropriate
+- denser inventory tables
+- keyboard-friendly POS
+- filters, split panes, operational dashboards
 
-## Security target
-Before every database release:
-- verify Supabase target is exactly `jeravdvssuzbthkxfvjy`
-- use versioned migrations
-- run applicable SQL regression tests
-- run Supabase Security Advisor
-- do not ship with security lints
+Tablet:
+- adaptive layouts between desktop density and touch-first flows
 
-Never expose service-role credentials to browser or native clients.
+Mobile iOS/Android:
+- thumb-friendly task screens
+- bottom navigation/native patterns where appropriate
+- scan-first interactions
+- large quantity controls
+- native-feeling keyboard and safe-area behavior
 
-## Current known external-provider gaps
-Foundations exist but provider-specific integrations are intentionally unfinished for:
-- SMS
-- WhatsApp
-- email delivery
-- push notification delivery
-- automatic subscription payment collection/webhooks
+Every data view must handle loading, empty, error, offline, stale, syncing, synced, pending, and conflict states.
 
-Do not invent a provider. Implement provider abstractions only when a provider decision is supplied.
+Accessibility requirements:
+- screen-reader semantics
+- keyboard support on Web
+- sufficient touch targets
+- non-color-only status communication
 
-## Build and validation commands
-Use the repository scripts/configuration and keep these green:
+Languages: English and French throughout.
+
+## Offline architecture contract
+
+Client is a durable local replica plus operation outbox, never stock authority.
+
+Persist synchronized read data needed for meaningful disconnected work, including:
+- orgs/branches
+- permissions snapshot + timestamp
+- products/barcodes
+- batches and trusted inventory snapshots
+- customers
+- settings/locale/currency
+- recent receipts/sales where appropriate
+- queued operations and retry state
+- sync metadata
+
+Read path:
+1. render local data immediately when available
+2. visibly mark freshness/staleness
+3. refresh from server when online
+4. update local replica after successful refresh
+
+Write path:
+1. preserve local intent in durable outbox
+2. keep stable idempotency key
+3. refresh/validate server state before replay where needed
+4. replay through existing authoritative server RPCs
+5. save returned server IDs
+6. refresh local read models
+7. mark synced or conflict
+
+Transient failures use backoff. Deterministic validation/auth failures must not retry forever.
+
+## Remaining production work for Codex
+
+Start now from current `main`. Do not wait for Sprint 9.
+
+Priority order:
+1. finish the production responsive application shell and shared UI primitives across all major screens
+2. make inventory, purchasing, expiry, transfers, reports, settings, and customer flows consistently offline-aware using the shared read-model infrastructure
+3. add a global sync-status surface showing Offline / Syncing / Synced / Pending changes / Conflict
+4. add sign-out cleanup for local user/org data
+5. harden sync lifecycle with session refresh and pull-before-replay where required
+6. verify native durability/runtime behavior on iOS and Android, including SQLite-backed storage behavior
+7. complete PWA installability polish: production icons, manifest details, service-worker update strategy, app-shell behavior
+8. verify and polish native navigation, scanning ergonomics, keyboard handling, safe areas, and touch targets
+9. move new inline EN/FR strings into translation resources where appropriate
+10. add missing offline integration tests for reconnect replay, deterministic conflicts, crash recovery, sign-out cleanup, and multi-pending-sale behavior
+11. productionize ESLint configuration instead of relying on Expo to auto-install lint dependencies in CI
+12. review dependency warnings and vulnerability report without destabilizing Expo compatibility
+
+## Known caveats to verify, not assume
+
+- Native persistence has not yet been fully runtime-verified on real iOS/Android devices.
+- The local persistence abstraction is currently key/value based rather than a dedicated relational offline schema.
+- Multi-device offline overselling cannot be fully prevented client-side. Communicate the limitation and let server reconciliation decide final acceptance.
+- Some legacy lint warnings remain in older feature areas but current CI passes.
+- `npm install` currently reports moderate vulnerabilities and some dependency/deprecation warnings. Do not claim a warning-free dependency tree.
+- Provider-specific SMS, WhatsApp, email, push, and automatic subscription payment integrations remain intentionally undecided.
+
+## Validation gates
+
+Keep all of these green:
 
 ```bash
 npm install
@@ -132,19 +221,15 @@ npx expo-doctor
 npx expo export --platform web
 ```
 
-Also maintain SQL regression tests for database workflows. Repository CI currently validates the application build; database regression files must not be mistaken for automatically executed CI unless the workflow is explicitly extended.
+For database changes additionally:
+- verify Supabase target exactly
+- use versioned migrations
+- run applicable SQL regression tests
+- run Supabase Security Advisor
+- ship with zero security lints
 
-## Immediate Codex implementation phase
-Before building later network features, productionize Core v1 + Sprint 8:
-1. establish the shared design system and responsive app shell
-2. implement durable local storage/cache abstraction
-3. implement durable mutation outbox and sync coordinator
-4. add global connectivity/sync-status UX
-5. make priority journeys responsive and offline-aware
-6. add PWA manifest/service-worker/install behavior
-7. harden POS offline behavior and conflict handling
-8. verify iOS/Android navigation and interaction ergonomics
-9. add offline replay/idempotency tests
-10. keep all existing RLS/ledger invariants intact
+Do not confuse repository application CI with live database regression execution unless CI is explicitly extended to run it.
 
-Only then continue with the later P1 network roadmap such as Exchange Network, Medicine Locator and reservations/Notify Me.
+## Scope control
+
+Do not begin Sprint 9 Exchange Network, Sprint 10 Medicine Locator, Sprint 11 reservations/Notify Me, or Sprint 12 analytics/intelligence until the current Core v1 + Sprint 8 production Web/PWA + iOS + Android build is complete enough to release and the productionization handoff is accepted.
