@@ -146,13 +146,22 @@ export default function HomeScreen() {
                     ))}
                   </View>
                   <Text style={styles.meta}>{t('organization.permissions')}: {permissions.length}</Text>
-                  {can('staff.manage') ? (
-                    <Link href="/staff" asChild>
-                      <Pressable accessibilityRole="button" style={styles.primaryButton}>
-                        <Text style={styles.primaryButtonText}>{t('organization.manageStaff')}</Text>
-                      </Pressable>
-                    </Link>
-                  ) : null}
+                  <View style={styles.actions}>
+                    {can('staff.manage') ? (
+                      <Link href="/staff" asChild>
+                        <Pressable accessibilityRole="button" style={styles.primaryButton}>
+                          <Text style={styles.primaryButtonText}>{t('organization.manageStaff')}</Text>
+                        </Pressable>
+                      </Link>
+                    ) : null}
+                    {can('branch.manage') ? (
+                      <Link href="/branches" asChild>
+                        <Pressable accessibilityRole="button" style={styles.secondaryButton}>
+                          <Text style={styles.secondaryButtonText}>{t('organization.manageBranches')}</Text>
+                        </Pressable>
+                      </Link>
+                    ) : null}
+                  </View>
                 </>
               ) : null}
             </View>
@@ -190,6 +199,7 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: '#102A5C', borderColor: '#102A5C' },
   chipText: { color: '#344159', fontWeight: '600', fontSize: 13 },
   chipTextSelected: { color: '#FFFFFF' },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   primaryButton: { alignSelf: 'flex-start', borderRadius: 10, backgroundColor: '#102A5C', paddingVertical: 12, paddingHorizontal: 18 },
   languageButton: { alignSelf: 'flex-start', borderRadius: 10, backgroundColor: '#00B8E6', paddingVertical: 12, paddingHorizontal: 18 },
   primaryButtonText: { color: '#FFFFFF', fontWeight: '700' },
