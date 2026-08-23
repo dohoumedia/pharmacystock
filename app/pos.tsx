@@ -6,7 +6,6 @@ import { useOrganization } from '@/providers/OrganizationProvider';
 import { completeSale, loadSaleItems, loadSales, quoteSale, refundSale, searchPosProducts, type CartLine, type PosProduct, type Sale, type SaleItem } from '@/services/sales';
 
 type CartRow = CartLine & { product: PosProduct };
-
 const paymentMethods = ['CASH','CARD','MOBILE_MONEY','BANK_TRANSFER','OTHER'] as const;
 
 export default function PosScreen() {
@@ -25,7 +24,6 @@ export default function PosScreen() {
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const [message,setMessage]=useState<string|null>(null);
-
   const canCreate=can('sale.create'); const canRead=can('sale.read'); const canRefund=can('sale.refund');
   const lines=useMemo(()=>cart.map(({product_id,quantity})=>({product_id,quantity})),[cart]);
 
@@ -41,19 +39,18 @@ export default function PosScreen() {
   const submitSale=async()=>{
     if(!organization||!branch||!lines.length||quoteTotal<=0)return;
     setBusy(true);setError(null);setMessage(null);
-    try{
-      const stamp=Date.now();
-      const saleId=await completeSale({organizationId:organization.id,branchId:branch.id,saleNumber:`SALE-${stamp}`,lines,payments:[{method:paymentMethod,amount:quoteTotal}],idempotencyKey:`sale:${branch.id}:${stamp}`});
-      setCart([]);setQuoteTotal(0);setMessage(`${t('pos.saleComplete')} · ${saleId.slice(0,8)}`); await refreshSales();
-    }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
+    try{const stamp=Date.now(); const saleId=await completeSale({organizationId:organization.id,branchId:branch.id,saleNumber:`SALE-${stamp}`,lines,payments:[{method:paymentMethod,amount:quoteTotal}],idempotencyKey:`sale:${branch.id}:${stamp}`}); setCart([]);setQuoteTotal(0);setMessage(`${t('pos.saleComplete')} · ${saleId.slice(0,8)}`); await refreshSales();}
+    catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
   };
 
   const openSale=async(sale:Sale)=>{ if(!organization)return; setSelectedSale(sale); setSaleItems(await loadSaleItems(organization.id,sale.id)); };
   const submitRefund=async()=>{
-    if(!selectedSale||!saleItems.length||!refundReason.trim())return;
+    const firstItem=saleItems[0];
+    if(!selectedSale||!firstItem||!refundReason.trim())return;
     const qty=Number(refundQuantity); if(!Number.isFinite(qty)||qty<=0)return;
     setBusy(true);setError(null);
-    try{const stamp=Date.now(); await refundSale({saleId:selectedSale.id,refundNumber:`REF-${stamp}`,items:[{sale_item_id:saleItems[0].id,quantity:qty}],idempotencyKey:`refund:${selectedSale.id}:${stamp}`,reason:refundReason}); setMessage(t('pos.refund')); setSelectedSale(null); setSaleItems([]); setRefundReason(''); await refreshSales();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
+    try{const stamp=Date.now(); await refundSale({saleId:selectedSale.id,refundNumber:`REF-${stamp}`,items:[{sale_item_id:firstItem.id,quantity:qty}],idempotencyKey:`refund:${selectedSale.id}:${stamp}`,reason:refundReason}); setMessage(t('pos.refund')); setSelectedSale(null); setSaleItems([]); setRefundReason(''); await refreshSales();}
+    catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
   };
 
   if(!organization||!branch)return <SafeAreaView style={styles.safe}><View style={styles.center}><Text>{t('organization.noOrganization')}</Text></View></SafeAreaView>;
@@ -62,15 +59,10 @@ export default function PosScreen() {
   return <SafeAreaView style={styles.safe}><ScrollView contentContainerStyle={styles.container}>
     <View style={styles.header}><View><Text style={styles.title}>{t('pos.title')}</Text><Text style={styles.subtitle}>{t('pos.subtitle')}</Text></View><Link href="/" style={styles.link}>{t('organization.back')}</Link></View>
     {error?<Text style={styles.error}>{error}</Text>:null}{message?<Text style={styles.success}>{message}</Text>:null}
-
     {canCreate?<><View style={styles.card}><TextInput value={query} onChangeText={setQuery} placeholder={t('pos.search')} style={styles.input}/><View style={styles.list}>{products.map((p)=><View key={p.id} style={styles.row}><View style={styles.flex}><Text style={styles.bold}>{p.name}</Text><Text style={styles.meta}>{p.generic_name||p.brand_name||p.sku||''}</Text></View><Pressable style={styles.button} onPress={()=>addProduct(p)}><Text style={styles.buttonText}>{t('pos.add')}</Text></Pressable></View>)}</View></View>
-
     <View style={styles.card}><Text style={styles.section}>{t('pos.cart')}</Text>{cart.length===0?<Text style={styles.meta}>{t('pos.emptyCart')}</Text>:cart.map((row)=><View key={row.product_id} style={styles.row}><View style={styles.flex}><Text style={styles.bold}>{row.product.name}</Text><Text style={styles.meta}>{t('pos.quantity')}</Text></View><TextInput keyboardType="decimal-pad" value={String(row.quantity)} onChangeText={(v)=>setQuantity(row.product_id,v)} style={styles.qty}/><Pressable onPress={()=>removeProduct(row.product_id)}><Text style={styles.remove}>×</Text></Pressable></View>)}<Text style={styles.total}>{t('pos.estimatedTotal')}: {quoteTotal.toLocaleString()} XOF</Text><Text style={styles.note}>{t('pos.serverPriceNote')}</Text></View>
-
     <View style={styles.card}><Text style={styles.section}>{t('pos.payment')}</Text><View style={styles.chips}>{paymentMethods.map((m)=><Pressable key={m} onPress={()=>setPaymentMethod(m)} style={[styles.chip,paymentMethod===m&&styles.chipActive]}><Text style={paymentMethod===m?styles.chipTextActive:styles.chipText}>{m==='CASH'?t('pos.cash'):m==='CARD'?t('pos.card'):m==='MOBILE_MONEY'?t('pos.mobileMoney'):m==='BANK_TRANSFER'?t('pos.bankTransfer'):t('pos.other')}</Text></Pressable>)}</View><Pressable disabled={busy||!cart.length||quoteTotal<=0} onPress={()=>void submitSale()} style={[styles.primary,busy&&styles.disabled]}><Text style={styles.buttonText}>{busy?t('common.loading'):t('pos.completeSale')}</Text></Pressable></View></>:null}
-
     {canRead?<View style={styles.card}><Text style={styles.section}>{t('pos.salesHistory')}</Text>{sales.length===0?<Text style={styles.meta}>{t('pos.noSales')}</Text>:sales.map((sale)=><Pressable key={sale.id} style={styles.saleRow} onPress={()=>void openSale(sale)}><View><Text style={styles.bold}>{sale.sale_number}</Text><Text style={styles.meta}>{new Date(sale.completed_at).toLocaleString()} · {sale.status}</Text></View><Text style={styles.bold}>{Number(sale.total_amount).toLocaleString()} {sale.currency_code}</Text></Pressable>)}</View>:null}
-
     {selectedSale?<View style={styles.card}><Text style={styles.section}>{t('pos.receipt')} · {selectedSale.sale_number}</Text>{saleItems.map((item)=><Text key={item.id} style={styles.meta}>{item.quantity} × {Number(item.unit_price).toLocaleString()} = {Number(item.line_total).toLocaleString()} XOF</Text>)}<Text style={styles.total}>{Number(selectedSale.total_amount).toLocaleString()} {selectedSale.currency_code}</Text>{canRefund&&selectedSale.status!=='REFUNDED'?<><TextInput value={refundReason} onChangeText={setRefundReason} placeholder={t('pos.refundReason')} style={styles.input}/><TextInput value={refundQuantity} onChangeText={setRefundQuantity} keyboardType="decimal-pad" placeholder={t('pos.refundQuantity')} style={styles.input}/><Pressable disabled={busy||!refundReason.trim()} onPress={()=>void submitRefund()} style={styles.secondary}><Text>{t('pos.confirmRefund')}</Text></Pressable></>:null}</View>:null}
   </ScrollView></SafeAreaView>;
 }
