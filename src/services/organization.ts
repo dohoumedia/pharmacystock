@@ -15,7 +15,6 @@ type StaffMember = {
 };
 
 export type OrganizationContextData = {
-  organizations: Organization[];
   branches: Branch[];
   membership: Membership | null;
   role: Role | null;
@@ -77,7 +76,6 @@ export async function loadOrganizationContext(
   }
 
   return {
-    organizations: [],
     branches: branchesResult.data,
     membership,
     role,
@@ -93,24 +91,30 @@ export async function loadStaff(organizationId: string): Promise<StaffMember[]> 
     .neq('status', 'revoked')
     .order('created_at');
   if (error) throw error;
-
   if (memberships.length === 0) return [];
+
   const userIds = memberships.map((membership) => membership.user_id);
   const roleIds = memberships.flatMap((membership) => (membership.role_id ? [membership.role_id] : []));
   const membershipIds = memberships.map((membership) => membership.id);
 
-  const [profilesResult, rolesResult, branchesResult] = await Promise.all([
-    supabase.from('profiles').select('*').in('user_id', userIds),
-    roleIds.length > 0 ? supabase.from('roles').select('*').in('id', roleIds) : Promise.resolve({ data: [] as Role[], error: null }),
-    supabase.from('branch_memberships').select('*').in('organization_membership_id', membershipIds),
-  ]);
-
+  const profilesResult = await supabase.from('profiles').select('*').in('user_id', userIds);
   if (profilesResult.error) throw profilesResult.error;
-  if (rolesResult.error) throw rolesResult.error;
+
+  let roles: Role[] = [];
+  if (roleIds.length > 0) {
+    const rolesResult = await supabase.from('roles').select('*').in('id', roleIds);
+    if (rolesResult.error) throw rolesResult.error;
+    roles = rolesResult.data;
+  }
+
+  const branchesResult = await supabase
+    .from('branch_memberships')
+    .select('*')
+    .in('organization_membership_id', membershipIds);
   if (branchesResult.error) throw branchesResult.error;
 
   const profilesByUser = new Map(profilesResult.data.map((profile) => [profile.user_id, profile]));
-  const rolesById = new Map(rolesResult.data.map((role) => [role.id, role]));
+  const rolesById = new Map(roles.map((role) => [role.id, role]));
 
   return memberships.map((membership) => ({
     membership,
