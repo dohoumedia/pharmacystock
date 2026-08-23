@@ -37,20 +37,20 @@ set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claim.sub','88000000-0000-0000-0000-000000000001',true);
 
-select public.create_stock_transfer(
+select set_config('s8.transfer1',public.create_stock_transfer(
  '88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','88aaaaaa-1111-1111-1111-aaaaaaaaaaaa','88aaaaaa-2222-2222-2222-aaaaaaaaaaaa','TR-S8-001',
  jsonb_build_array(jsonb_build_object('source_batch_id','88aaaaaa-5555-5555-5555-aaaaaaaaaaaa','quantity',6)),
- 's8:transfer:001','First branch transfer');
+ 's8:transfer:001','First branch transfer')::text,true);
 
 -- Same idempotency key must resolve to the original transfer.
 do $$ declare a uuid; b uuid; begin
- select id into a from public.stock_transfers where organization_id='88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and transfer_number='TR-S8-001';
+ a:=current_setting('s8.transfer1')::uuid;
  b:=public.create_stock_transfer('88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','88aaaaaa-1111-1111-1111-aaaaaaaaaaaa','88aaaaaa-2222-2222-2222-aaaaaaaaaaaa','TR-S8-RETRY',jsonb_build_array(jsonb_build_object('source_batch_id','88aaaaaa-5555-5555-5555-aaaaaaaaaaaa','quantity',1)),'s8:transfer:001','retry');
  if a<>b then raise exception 'S8-T-001 transfer idempotency failed'; end if;
 end $$;
 
-select public.approve_stock_transfer((select id from public.stock_transfers where transfer_number='TR-S8-001'));
-select public.dispatch_stock_transfer((select id from public.stock_transfers where transfer_number='TR-S8-001'));
+select public.approve_stock_transfer(current_setting('s8.transfer1')::uuid);
+select public.dispatch_stock_transfer(current_setting('s8.transfer1')::uuid);
 
 do $$ begin
  if coalesce((select on_hand_quantity from public.inventory_balances where organization_id='88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and branch_id='88aaaaaa-1111-1111-1111-aaaaaaaaaaaa' and batch_id='88aaaaaa-5555-5555-5555-aaaaaaaaaaaa'),0)<>4 then raise exception 'S8-T-002 dispatch did not reduce source stock'; end if;
@@ -59,13 +59,13 @@ end $$;
 
 select set_config('request.jwt.claim.sub','88000000-0000-0000-0000-000000000002',true);
 select public.receive_stock_transfer(
- (select id from public.stock_transfers where transfer_number='TR-S8-001'),
- jsonb_build_array(jsonb_build_object('line_id',(select id from public.stock_transfer_lines where transfer_id=(select id from public.stock_transfers where transfer_number='TR-S8-001')),'quantity',5,'reason','one unit damaged in transit')),
+ current_setting('s8.transfer1')::uuid,
+ jsonb_build_array(jsonb_build_object('line_id',(select id from public.stock_transfer_lines where transfer_id=current_setting('s8.transfer1')::uuid),'quantity',5,'reason','one unit damaged in transit')),
  'Carrier discrepancy recorded');
 
 do $$ begin
- if (select status from public.stock_transfers where transfer_number='TR-S8-001')<>'RECEIVED_WITH_DISCREPANCY' then raise exception 'S8-T-004 discrepancy status failed'; end if;
- if (select discrepancy_quantity from public.stock_transfer_lines where transfer_id=(select id from public.stock_transfers where transfer_number='TR-S8-001'))<>1 then raise exception 'S8-T-005 discrepancy quantity failed'; end if;
+ if (select status from public.stock_transfers where id=current_setting('s8.transfer1')::uuid)<>'RECEIVED_WITH_DISCREPANCY' then raise exception 'S8-T-004 discrepancy status failed'; end if;
+ if (select discrepancy_quantity from public.stock_transfer_lines where transfer_id=current_setting('s8.transfer1')::uuid)<>1 then raise exception 'S8-T-005 discrepancy quantity failed'; end if;
  if coalesce((select sum(on_hand_quantity) from public.inventory_balances where organization_id='88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and branch_id='88aaaaaa-2222-2222-2222-aaaaaaaaaaaa'),0)<>5 then raise exception 'S8-T-006 destination stock receipt failed'; end if;
  if not exists(select 1 from public.inventory_movements where organization_id='88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and movement_type='TRANSFER_IN' and quantity_delta=5) then raise exception 'S8-T-007 transfer-in ledger movement missing'; end if;
 end $$;
@@ -73,20 +73,20 @@ end $$;
 -- A member scoped to an unrelated branch must neither see nor approve/cancel the transfer.
 select set_config('request.jwt.claim.sub','88000000-0000-0000-0000-000000000003',true);
 do $$ begin
- if exists(select 1 from public.stock_transfers where transfer_number='TR-S8-001') then raise exception 'S8-T-008 transfer RLS branch isolation failed'; end if;
+ if exists(select 1 from public.stock_transfers where id=current_setting('s8.transfer1')::uuid) then raise exception 'S8-T-008 transfer RLS branch isolation failed'; end if;
  if exists(select 1 from public.stock_transfer_lines where organization_id='88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') then raise exception 'S8-T-009 transfer-line RLS branch isolation failed'; end if;
 end $$;
 
 -- Create another requested transfer as the source user, then verify unrelated approval is blocked.
 select set_config('request.jwt.claim.sub','88000000-0000-0000-0000-000000000001',true);
-select public.create_stock_transfer(
+select set_config('s8.transfer2',public.create_stock_transfer(
  '88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','88aaaaaa-1111-1111-1111-aaaaaaaaaaaa','88aaaaaa-2222-2222-2222-aaaaaaaaaaaa','TR-S8-002',
  jsonb_build_array(jsonb_build_object('source_batch_id','88aaaaaa-5555-5555-5555-aaaaaaaaaaaa','quantity',1)),
- 's8:transfer:002',null);
+ 's8:transfer:002',null)::text,true);
 select set_config('request.jwt.claim.sub','88000000-0000-0000-0000-000000000003',true);
 do $$ begin
  begin
-  perform public.approve_stock_transfer((select id from public.stock_transfers where transfer_number='TR-S8-002'));
+  perform public.approve_stock_transfer(current_setting('s8.transfer2')::uuid);
   raise exception 'S8-T-010 unrelated branch approval was allowed';
  exception when insufficient_privilege then null; end;
 end $$;
