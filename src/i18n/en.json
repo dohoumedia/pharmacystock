@@ -10,18 +10,41 @@
     "cancel": "Cancel",
     "language": "Language",
     "english": "English",
-    "french": "French"
+    "french": "French",
+    "active": "Active",
+    "suspended": "Suspended",
+    "noData": "No data available"
   },
   "auth": {
     "signIn": "Sign in",
     "signOut": "Sign out",
     "email": "Email",
-    "password": "Password"
+    "password": "Password",
+    "signedOut": "Signed out"
   },
   "foundation": {
     "title": "Foundation ready",
-    "subtitle": "Authentication, tenancy, security and bilingual infrastructure are being prepared before pharmacy operations modules are enabled.",
+    "subtitle": "Authentication, tenancy, security and bilingual infrastructure are ready for pharmacy modules.",
     "database": "Supabase foundation",
     "platforms": "Web · iOS · Android"
+  },
+  "organization": {
+    "title": "Organization",
+    "branch": "Branch",
+    "role": "Role",
+    "permissions": "Permissions",
+    "noOrganization": "No active pharmacy organization is assigned to this account.",
+    "manageStaff": "Manage staff",
+    "staffTitle": "Staff & access",
+    "staffSubtitle": "Review staff roles, account status and branch access.",
+    "branchAccess": "Branch access",
+    "allBranches": "All branches",
+    "unknownUser": "Unnamed user",
+    "noRole": "No role assigned",
+    "cannotManage": "Your role does not allow staff management.",
+    "back": "Back to dashboard",
+    "refresh": "Refresh",
+    "status": "Status",
+    "securityNote": "Permissions are enforced by Supabase Row Level Security, not only by this screen."
   }
 }
