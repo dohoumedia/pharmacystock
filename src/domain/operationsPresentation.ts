@@ -4,21 +4,6 @@ export function reportsLayoutForWidth(width: number): ReportsLayout {
   return width >= 768 ? 'desktop' : 'mobile';
 }
 
-export function canRunAuthorizedMutation(input: {
-  isOnline: boolean;
-  hasPermission: boolean;
-  permissionContextIsCached: boolean;
-  permissionContextSyncedAt: string | null;
-  now?: number;
-  maxAgeMs?: number;
-}): boolean {
-  const now = input.now ?? Date.now();
-  const maxAgeMs = input.maxAgeMs ?? 15 * 60 * 1000;
-  const syncedAt = input.permissionContextSyncedAt ? Date.parse(input.permissionContextSyncedAt) : Number.NaN;
-  return input.isOnline && input.hasPermission && !input.permissionContextIsCached
-    && Number.isFinite(syncedAt) && now - syncedAt <= maxAgeMs;
-}
-
 export function isSettingsReadStale(syncedAt: string | null, now = Date.now(), maxAgeMs = 15 * 60 * 1000): boolean {
   if (!syncedAt) return true;
   const timestamp = Date.parse(syncedAt);

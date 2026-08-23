@@ -14,11 +14,11 @@ const localStore = new LocalStore();
 
 export default function CustomersScreen(){
   const {t,i18n}=useTranslation();
-  const {organization,can,usingCachedData}=useOrganization();
+  const {organization,can,usingCachedData,contextSyncedAt}=useOrganization();
   const {isOnline}=useConnectivity();
   const [customers,setCustomers]=useState<Customer[]>([]);const[name,setName]=useState('');const[phone,setPhone]=useState('');const[email,setEmail]=useState('');const[notes,setNotes]=useState('');const[busy,setBusy]=useState(false);const[loading,setLoading]=useState(true);const[error,setError]=useState(false);const[syncedAt,setSyncedAt]=useState<string|null>(null);const[usingCache,setUsingCache]=useState(false);
   const canRead=can('customer.read');const canManage=can('customer.manage');
-  const mutationsAllowed=hasFreshMutationAuthorization(isOnline,usingCachedData);
+  const mutationsAllowed=hasFreshMutationAuthorization(isOnline,usingCachedData,contextSyncedAt);
 
   const refresh=async()=>{
     if(!organization||!canRead)return;

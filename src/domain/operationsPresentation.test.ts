@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRunAuthorizedMutation, formatReportDate, formatReportMoney, isSettingsReadStale, reportsLayoutForWidth } from './operationsPresentation';
+import { formatReportDate, formatReportMoney, isSettingsReadStale, reportsLayoutForWidth } from './operationsPresentation';
 
 describe('operations presentation helpers', () => {
   const now = Date.parse('2026-08-23T18:10:00.000Z');
@@ -20,12 +20,4 @@ describe('operations presentation helpers', () => {
     expect(isSettingsReadStale('2026-08-23T18:05:00.000Z', now)).toBe(false);
   });
 
-  it('requires online, permitted, fresh server authorization for mutations', () => {
-    const fresh = '2026-08-23T18:05:00.000Z';
-    expect(canRunAuthorizedMutation({ isOnline: true, hasPermission: true, permissionContextIsCached: false, permissionContextSyncedAt: fresh, now })).toBe(true);
-    expect(canRunAuthorizedMutation({ isOnline: false, hasPermission: true, permissionContextIsCached: false, permissionContextSyncedAt: fresh, now })).toBe(false);
-    expect(canRunAuthorizedMutation({ isOnline: true, hasPermission: true, permissionContextIsCached: true, permissionContextSyncedAt: fresh, now })).toBe(false);
-    expect(canRunAuthorizedMutation({ isOnline: true, hasPermission: true, permissionContextIsCached: false, permissionContextSyncedAt: '2026-08-23T17:00:00.000Z', now })).toBe(false);
-    expect(canRunAuthorizedMutation({ isOnline: true, hasPermission: false, permissionContextIsCached: false, permissionContextSyncedAt: fresh, now })).toBe(false);
-  });
 });
