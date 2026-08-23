@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
+import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { LocalStore } from '@/offline/localStore';
 import { cacheExpiryReadModel, getCachedExpiryReadModel } from '@/offline/expiryTransfersReadModels';
 import { isSnapshotStale, OPERATIONAL_READ_MODEL_MAX_AGE_MS } from '@/offline/readModels';
@@ -175,6 +176,17 @@ export default function ExpiryScreen() {
         <View style={styles.metricGrid}>
           {['EXPIRED','7_DAYS','30_DAYS','60_DAYS','90_DAYS','180_DAYS'].map((bucket) => <View key={bucket} style={styles.metric}><Text style={styles.metricValue}>{counts[bucket] ?? 0}</Text><Text style={styles.meta}>{t(`expiry.bucket.${bucket}`)}</Text></View>)}
           <View style={styles.metric}><Text style={styles.metricValue}>{Math.round(valueAtRisk).toLocaleString()} {organization?.currency_code ?? ''}</Text><Text style={styles.meta}>{t('expiry.valueAtRisk')}</Text></View>
+        </View>
+
+        <View accessibilityRole="summary" style={styles.card}>
+          <Text style={styles.sectionTitle}>{t('catalog.status')}</Text>
+          <View style={styles.chips}>
+            <BatchStatusBadge status="ACTIVE" />
+            <BatchStatusBadge status="EXPIRED" />
+            <BatchStatusBadge status="QUARANTINED" />
+            <BatchStatusBadge status="RECALLED" />
+            <BatchStatusBadge status="DISPOSED" />
+          </View>
         </View>
 
         {canManage ? <View style={styles.card}><Text style={styles.sectionTitle}>{t('expiry.policy')}</Text><Text style={styles.meta}>{t('expiry.policyHint')}</Text><TextInput editable={mutationAllowed} style={styles.input} value={thresholds} onChangeText={setThresholds} placeholder="180, 90, 60, 30, 7"/><Pressable disabled={saving||!mutationAllowed} onPress={() => void submitPolicy()} style={[styles.primaryButton,(saving||!mutationAllowed)&&styles.disabled]}><Text style={styles.primaryButtonText}>{t('common.save')}</Text></Pressable></View> : null}
