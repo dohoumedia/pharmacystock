@@ -48,7 +48,10 @@ export default function StaffScreen() {
   }, [organization, canManage]);
 
   useEffect(() => {
-    void refresh();
+    const timer = setTimeout(() => {
+      void refresh();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [refresh]);
 
   const changeRole = async (member: StaffMember, roleId: string) => {
