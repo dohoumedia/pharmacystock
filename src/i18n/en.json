@@ -1,0 +1,27 @@
+{
+  "app": {
+    "name": "DohouLabs Pharmacy Stock",
+    "tagline": "Pharmacy operations, inventory and expiry control"
+  },
+  "common": {
+    "loading": "Loading…",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "language": "Language",
+    "english": "English",
+    "french": "French"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "email": "Email",
+    "password": "Password"
+  },
+  "foundation": {
+    "title": "Foundation ready",
+    "subtitle": "Authentication, tenancy, security and bilingual infrastructure are being prepared before pharmacy operations modules are enabled.",
+    "database": "Supabase foundation",
+    "platforms": "Web · iOS · Android"
+  }
+}
