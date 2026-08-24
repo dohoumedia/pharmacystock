@@ -26,6 +26,10 @@ export function canRunTransferMutation(input: { isOnline: boolean; permitted: bo
   return input.isOnline && input.permitted && canApplyTransferAction(input.status, input.action);
 }
 
+export function canUseTransferMutationControls(isOnline: boolean, usingCachedPermissions: boolean) {
+  return isOnline && !usingCachedPermissions;
+}
+
 export function hasTransferDiscrepancy(status: TransferStatus, discrepancyQuantity = 0) {
   return status === 'RECEIVED_WITH_DISCREPANCY' || discrepancyQuantity !== 0;
 }

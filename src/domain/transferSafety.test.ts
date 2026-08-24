@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canApplyTransferAction, canRunTransferMutation, hasTransferDiscrepancy, isTransferBatchEligible, operationalLayoutForWidth, validateReceivedQuantity } from './transferSafety';
+import { canApplyTransferAction, canRunTransferMutation, canUseTransferMutationControls, hasTransferDiscrepancy, isTransferBatchEligible, operationalLayoutForWidth, validateReceivedQuantity } from './transferSafety';
 
 describe('transfer safety presentation guards', () => {
   it('excludes expired, quarantined, depleted, and empty batches', () => {
@@ -35,6 +35,12 @@ describe('transfer safety presentation guards', () => {
     expect(canRunTransferMutation({ isOnline: false, permitted: true, status: 'REQUESTED', action: 'approve' })).toBe(false);
     expect(canRunTransferMutation({ isOnline: true, permitted: false, status: 'APPROVED', action: 'dispatch' })).toBe(false);
     expect(canRunTransferMutation({ isOnline: true, permitted: true, status: 'RECEIVED', action: 'dispatch' })).toBe(false);
+  });
+
+  it('locks mutation controls offline and while permissions are cached', () => {
+    expect(canUseTransferMutationControls(true, false)).toBe(true);
+    expect(canUseTransferMutationControls(false, false)).toBe(false);
+    expect(canUseTransferMutationControls(true, true)).toBe(false);
   });
 
   it('presents terminal discrepancy state independently of color', () => {
