@@ -107,6 +107,14 @@ export class OutboxStore {
     notifyListeners();
   }
 
+  replaceAll(operations: OutboxOperation[]): void {
+    if (operations.length === 0) {
+      this.clear();
+      return;
+    }
+    this.write(operations);
+  }
+
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

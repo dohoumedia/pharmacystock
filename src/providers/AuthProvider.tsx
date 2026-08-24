@@ -2,6 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { offlineSessionScope } from '@/offline/sessionScope';
 
 type AuthContextValue = {
   session: Session | null;
@@ -19,14 +20,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let mounted = true;
+    let authEventSeen = false;
 
     supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
+      if (!mounted || authEventSeen) return;
+      offlineSessionScope.bindUser(data.session?.user.id ?? null);
       setSession(data.session);
       setLoading(false);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      authEventSeen = true;
+      offlineSessionScope.bindUser(nextSession?.user.id ?? null);
       setSession(nextSession);
       setLoading(false);
     });

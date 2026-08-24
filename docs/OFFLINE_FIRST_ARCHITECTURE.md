@@ -167,8 +167,16 @@ Individual records pending upload should carry a visible status badge.
 - encrypt/protect local data using reasonable platform facilities when available
 - minimize sensitive cached fields
 - clear organization-scoped cached data appropriately on sign-out/account removal
+- bind the durable replica and outbox to the authenticated user; clear both before a different user session can consume them
 - never cache secrets
 - authorization is revalidated by Supabase on replay; a stale permission snapshot never grants server authority
+
+## Sync lifecycle hardening
+- Reconnect replay refreshes an expired or near-expiry session before reading or submitting server state.
+- Sensitive queued operations pull the essential authoritative read model before replay; POS refreshes branch inventory snapshots.
+- Preparation failures do not bypass replay semantics: transient failures retain exponential backoff, while deterministic authentication failures become conflicts.
+- Session changes and sign-out clear the cached replica and move unsynchronized outbox intents into a durable per-user vault, leaving the active namespace empty. Another user cannot inherit cached or offline data, while the original user's pending, syncing, failed, and conflicted intents remain recoverable with their unchanged idempotency keys.
+- Replay is bound to the initiating authenticated-user generation and stops applying results or processing further intents as soon as sign-out or a user switch changes that generation.
 
 ## Testing matrix
 Automated tests should cover:
