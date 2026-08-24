@@ -1,5 +1,6 @@
 {
   "production": {
+    "authorizationReadOnly": "Changes require an online server check with freshly synchronized permissions.",
     "connectivity": {
       "checking": "Checking connection…",
       "offline": "Offline mode. Cached data may be stale and queued changes will sync when connectivity returns.",
