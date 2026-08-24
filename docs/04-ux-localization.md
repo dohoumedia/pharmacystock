@@ -116,6 +116,8 @@ Reservation: `REQUESTED`, `ACCEPTED`, `READY`, `COLLECTED`, `EXPIRED`, `CANCELLE
 ## Formatting
 Store ISO currency code (e.g. XOF) and configure display such as `35 000 FCFA`. Numbers/dates use locale-aware formatting. For safety-sensitive expiry displays prefer unambiguous forms such as `30 Sep 2026` / `30 sept. 2026`.
 
+Database `date` values (including batch expiry, purchase-order expected dates, and report calendar dates) are calendar dates, not instants. Clients must preserve their `YYYY-MM-DD` calendar fields during localized display in every device timezone. Timestamp/timestamptz values remain true instants and continue to display in the user's local timezone.
+
 ## Public wording
 Avoid guarantees when inventory can change. Example: “Reported in stock” / “Signalé disponible”. Reservation copy must state the medicine is not reserved until pharmacy confirmation. Availability alerts should say availability may change.
 

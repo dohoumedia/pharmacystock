@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { formatDateOnly } from '@/utils/dateFormatting';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { LocalStore } from '@/offline/localStore';
@@ -28,7 +29,7 @@ import {
 const localStore = new LocalStore();
 
 export default function ExpiryScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isOnline } = useConnectivity();
   const { organization, branch, branches, setBranchId, can, usingCachedData: usingCachedPermissions } = useOrganization();
   const [risk, setRisk] = useState<ExpiryRisk[]>([]);
@@ -195,7 +196,7 @@ export default function ExpiryScreen() {
           <Text style={styles.sectionTitle}>{t('expiry.riskList')}</Text>
           {!loading && risk.length === 0 ? <Text style={styles.meta}>{t('expiry.noRisk')}</Text> : null}
           {risk.map((item) => <Pressable key={item.batch_id ?? `${item.product_id}-${item.lot_number}`} onPress={() => { setSelectedBatchId(item.batch_id); setConfirmDispose(false); }} style={[styles.riskRow,item.batch_id===selectedBatchId&&styles.riskRowSelected]}>
-            <View style={styles.grow}><Text style={styles.name}>{item.product_name}</Text><Text style={styles.meta}>{t('catalog.lotNumber')}: {item.lot_number} · {t('expiry.expires')}: {item.expiry_date}</Text></View>
+            <View style={styles.grow}><Text style={styles.name}>{item.product_name}</Text><Text style={styles.meta}>{t('catalog.lotNumber')}: {item.lot_number} · {t('expiry.expires')}: {formatDateOnly(item.expiry_date, i18n.language)}</Text></View>
             <View><Text style={styles.quantity}>{item.on_hand_quantity}</Text><Text style={styles.meta}>{t(`expiry.bucket.${item.risk_bucket ?? 'OK'}`)}</Text></View>
           </Pressable>)}
         </View>

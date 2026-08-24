@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { formatDateOnly } from '@/utils/dateFormatting';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { batchSafetyStatus, type BatchSafetyStatus } from '@/domain/inventorySafety';
@@ -263,9 +264,7 @@ export default function BatchesScreen() {
                   </Text>
                   <Text style={[styles.meta, styles.lotColumn]}>{batch.lot_number}</Text>
                   <Text style={[styles.meta, styles.expiryColumn]}>
-                    {new Intl.DateTimeFormat(i18n.language, {
-                      dateStyle: 'medium',
-                    }).format(new Date(`${batch.expiry_date}T00:00:00Z`))}
+                    {formatDateOnly(batch.expiry_date, i18n.language)}
                   </Text>
                   <View style={styles.statusColumn}>
                     <BatchStatusBadge status={batchSafetyStatus(batch.status, batch.expiry_date)} />
@@ -288,7 +287,7 @@ export default function BatchesScreen() {
                   <BatchStatusBadge status={batchSafetyStatus(batch.status, batch.expiry_date)} />
                 </View>
                 <Text style={styles.meta}>
-                  {t('catalog.expiryDate')}: {batch.expiry_date}
+                  {t('catalog.expiryDate')}: {formatDateOnly(batch.expiry_date, i18n.language)}
                 </Text>
                 <View style={styles.costRow}>
                   <Text style={styles.meta}>
