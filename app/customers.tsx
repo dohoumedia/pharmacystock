@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'expo-router';
 import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -20,14 +20,14 @@ export default function CustomersScreen(){
   const canRead=can('customer.read');const canManage=can('customer.manage');
   const mutationsAllowed=hasFreshMutationAuthorization(isOnline,usingCachedData,contextSyncedAt);
 
-  const refresh=async()=>{
+  const refresh=useCallback(async()=>{
     if(!organization||!canRead)return;
     setLoading(true);setError(false);
     if(!isOnline){const cached=getCachedCustomers(localStore,organization.id);setCustomers(cached?.data??[]);setSyncedAt(cached?.syncedAt??null);setUsingCache(true);setLoading(false);return;}
     try{const data=await loadCustomers(organization.id);const now=new Date().toISOString();cacheCustomers(localStore,organization.id,data,now);setCustomers(data);setSyncedAt(now);setUsingCache(false);}catch{const cached=getCachedCustomers(localStore,organization.id);if(cached){setCustomers(cached.data);setSyncedAt(cached.syncedAt);setUsingCache(true);}setError(true);}finally{setLoading(false);}
-  };
+  },[organization,canRead,isOnline]);
 
-  useEffect(()=>{const timer=setTimeout(()=>void refresh(),0);return()=>clearTimeout(timer);},[organization?.id,canRead,isOnline]);
+  useEffect(()=>{const timer=setTimeout(()=>void refresh(),0);return()=>clearTimeout(timer);},[refresh]);
 
   const add=async()=>{if(!organization||!name.trim()||!mutationsAllowed)return;setBusy(true);setError(false);try{await createCustomer({organizationId:organization.id,fullName:name,phone,email,preferredLocale:i18n.language==='en'?'en':'fr',notes});setName('');setPhone('');setEmail('');setNotes('');await refresh();}catch{setError(true);}finally{setBusy(false);}};
   const archive=async(id:string)=>{if(!mutationsAllowed)return;setBusy(true);try{await archiveCustomer(id);await refresh();}catch{setError(true);}finally{setBusy(false);}};

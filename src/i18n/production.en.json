@@ -96,6 +96,7 @@
     "settings": {
       "onlineOnly": "Settings changes require an online server authorization check.",
       "freshAuthorizationRequired": "Changes are locked until your permissions are freshly synchronized with the server.",
+      "sessionDataOffline": "Notifications, subscription, imports, and audit data are not synchronized for offline use. Any values shown are limited to this app session and may be stale.",
       "payment": {
         "CASH": "Cash",
         "CARD": "Card",

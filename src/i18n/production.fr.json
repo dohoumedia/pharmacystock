@@ -96,6 +96,7 @@
     "settings": {
       "onlineOnly": "Les modifications des paramètres nécessitent un contrôle d’autorisation du serveur en ligne.",
       "freshAuthorizationRequired": "Les modifications sont verrouillées jusqu’à la synchronisation récente de vos autorisations avec le serveur.",
+      "sessionDataOffline": "Les notifications, l’abonnement, les imports et les données d’audit ne sont pas synchronisés pour une utilisation hors ligne. Les valeurs affichées sont limitées à cette session de l’application et peuvent être obsolètes.",
       "payment": {
         "CASH": "Espèces",
         "CARD": "Carte",
