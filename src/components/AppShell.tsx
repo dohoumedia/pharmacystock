@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react';
+import { useState, type PropsWithChildren } from 'react';
 import { Link, usePathname } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -31,20 +31,27 @@ function NavLink({ item, rail = false, bottom = false }: { item: NavItem; rail?:
   const { t } = useTranslation();
   const pathname = usePathname();
   const active = pathname === item.href;
+  const [focused, setFocused] = useState(false);
+  const label = t(item.labelKey);
   return (
     <Link href={item.href as '/'} asChild>
       <Pressable
         accessibilityRole="link"
+        accessibilityLabel={rail ? label : undefined}
         accessibilityState={{ selected: active }}
+        focusable
+        onBlur={() => setFocused(false)}
+        onFocus={() => setFocused(true)}
         style={StyleSheet.flatten([
           styles.navItem,
           rail && styles.railItem,
           bottom && styles.bottomNavItem,
           active && styles.navItemActive,
+          focused && styles.navItemFocused,
         ])}
       >
         <Text style={[styles.marker, active && styles.navTextActive]}>{item.marker}</Text>
-        {!rail ? <Text style={[styles.navText, active && styles.navTextActive]}>{t(item.labelKey)}</Text> : null}
+        {!rail ? <Text style={[styles.navText, active && styles.navTextActive]}>{label}</Text> : null}
       </Pressable>
     </Link>
   );
@@ -118,10 +125,11 @@ const styles = StyleSheet.create({
   brand: { color: colors.surface, fontSize: 17, fontWeight: '800', flexShrink: 1 },
   nav: { gap: spacing.xs, paddingBottom: spacing.lg },
   navGroup: { color: '#AFC0DF', fontSize: 11, fontWeight: '800', marginTop: spacing.lg, marginBottom: spacing.sm, textTransform: 'uppercase' },
-  navItem: { minHeight: touchTarget, borderRadius: radii.md, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  navItem: { minHeight: touchTarget, borderWidth: 2, borderColor: 'transparent', borderRadius: radii.md, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   railItem: { justifyContent: 'center', paddingHorizontal: spacing.sm },
   bottomNavItem: { flex: 1, flexDirection: 'column', justifyContent: 'center', gap: 2, paddingHorizontal: spacing.xs },
   navItemActive: { backgroundColor: '#254477' },
+  navItemFocused: { borderColor: colors.accent, backgroundColor: '#254477' },
   marker: { width: 24, color: '#C9D5E9', fontSize: 12, fontWeight: '900', textAlign: 'center' },
   navText: { color: '#E4EAF4', fontSize: 14, fontWeight: '700', flexShrink: 1 },
   navTextActive: { color: colors.surface },
