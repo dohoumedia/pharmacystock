@@ -1,3 +1,4 @@
+import 'expo-sqlite/localStorage/install';
 import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { getLocales } from 'expo-localization';
@@ -9,14 +10,20 @@ import sprint7En from './sprint7.en.json';
 import sprint7Fr from './sprint7.fr.json';
 import sprint8En from './sprint8.en.json';
 import sprint8Fr from './sprint8.fr.json';
+import { getPersistedLocale, persistLocale } from './localePersistence';
 
 const deviceLanguage = getLocales()[0]?.languageCode === 'en' ? 'en' : 'fr';
+const configuredLanguage = process.env.EXPO_PUBLIC_DEFAULT_LOCALE;
+const defaultLanguage = configuredLanguage === 'en' || configuredLanguage === 'fr'
+  ? configuredLanguage
+  : deviceLanguage;
+const initialLanguage = getPersistedLocale() ?? defaultLanguage;
 
 const i18n = createInstance();
 
-void i18n.use(initReactI18next).init({
+const initialization = i18n.use(initReactI18next).init({
   compatibilityJSON: 'v4',
-  lng: deviceLanguage,
+  lng: initialLanguage,
   fallbackLng: 'fr',
   supportedLngs: ['en', 'fr'],
   resources: {
@@ -26,6 +33,12 @@ void i18n.use(initReactI18next).init({
   interpolation: {
     escapeValue: false,
   },
+});
+
+// Subscribe only after initialization so a device/organization default is not
+// mistaken for an explicit user choice. Every later language change is durable.
+void initialization.then(() => {
+  i18n.on('languageChanged', persistLocale);
 });
 
 export { i18n };
