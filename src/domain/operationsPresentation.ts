@@ -1,3 +1,5 @@
+import { formatDateOnly } from '../utils/dateFormatting';
+
 export type ReportsLayout = 'mobile' | 'desktop';
 
 export function reportsLayoutForWidth(width: number): ReportsLayout {
@@ -15,6 +17,5 @@ export function formatReportMoney(value: number | null, locale: string, currency
 }
 
 export function formatReportDate(value: string | null, locale: string): string {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+  return formatDateOnly(value, locale);
 }

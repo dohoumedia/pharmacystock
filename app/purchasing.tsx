@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { formatDateOnly, formatInstantDate } from '@/utils/dateFormatting';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { LocalStore } from '@/offline/localStore';
 import { cachePurchasingReadModel, getCachedPurchasingReadModel } from '@/offline/purchasingReadModels';
@@ -242,9 +243,8 @@ export default function PurchasingScreen() {
   };
 
   const stale = isSnapshotStale(syncedAt ? { data: null, syncedAt } : null, OPERATIONAL_READ_MODEL_MAX_AGE_MS);
-  const formatDate = (value: string | null) => value
-    ? new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(value))
-    : '—';
+  const formatExpectedDate = (value: string | null) => formatDateOnly(value, i18n.language);
+  const formatReceivedDate = (value: string | null) => formatInstantDate(value, i18n.language);
 
   if (!canRead) {
     return (
@@ -371,10 +371,10 @@ export default function PurchasingScreen() {
               {orders.length > 0 && visibleOrders.length === 0 ? <Text style={styles.meta}>{t('production.purchasingView.noMatches')}</Text> : null}
               {orderLayout === 'table' && visibleOrders.length > 0 ? <View style={styles.table}>
                 <View style={[styles.tableRow, styles.tableHeader]}><Text style={[styles.tableHeading, styles.poColumn]}>{t('purchasing.poNumber')}</Text><Text style={[styles.tableHeading, styles.supplierColumn]}>{t('purchasing.supplier')}</Text><Text style={[styles.tableHeading, styles.dateColumn]}>{t('purchasing.expectedAt')}</Text><Text style={[styles.tableHeading, styles.statusColumn]}>{t('production.purchasingView.status')}</Text></View>
-                {visibleOrders.map((item) => <Pressable accessibilityRole="button" key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={styles.tableRow}><Text style={[styles.name, styles.poColumn]}>{item.po_number}</Text><Text style={[styles.meta, styles.supplierColumn]}>{item.supplier_name}</Text><Text style={[styles.meta, styles.dateColumn]}>{formatDate(item.expected_at)}</Text><Text style={[styles.status, styles.statusColumn]}>{t(`purchasing.status.${item.status}`)}</Text></Pressable>)}
+                {visibleOrders.map((item) => <Pressable accessibilityRole="button" key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={styles.tableRow}><Text style={[styles.name, styles.poColumn]}>{item.po_number}</Text><Text style={[styles.meta, styles.supplierColumn]}>{item.supplier_name}</Text><Text style={[styles.meta, styles.dateColumn]}>{formatExpectedDate(item.expected_at)}</Text><Text style={[styles.status, styles.statusColumn]}>{t(`purchasing.status.${item.status}`)}</Text></Pressable>)}
               </View> : visibleOrders.map((item) => (
                 <Pressable accessibilityRole="button" key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={[styles.row, compact && styles.compactRow]}>
-                  <View style={styles.grow}><Text style={styles.name}>{item.po_number}</Text><Text style={styles.meta}>{item.supplier_name} · {formatDate(item.expected_at)}</Text></View>
+                  <View style={styles.grow}><Text style={styles.name}>{item.po_number}</Text><Text style={styles.meta}>{item.supplier_name} · {formatExpectedDate(item.expected_at)}</Text></View>
                   <Text style={styles.status}>{t(`purchasing.status.${item.status}`)}</Text>
                 </Pressable>
               ))}
@@ -417,7 +417,7 @@ export default function PurchasingScreen() {
             <Text style={styles.sectionTitle}>{t('purchasing.receiptHistory')}</Text>
             {receipts.length === 0 ? <Text style={styles.meta}>{t('purchasing.noReceipts')}</Text> : receipts.map((item) => (
               <View key={item.id} style={styles.row}>
-                <View><Text style={styles.name}>{item.receipt_number}</Text><Text style={styles.meta}>{formatDate(item.received_at)} · {item.supplier_invoice_number ?? '—'}</Text></View>
+                <View><Text style={styles.name}>{item.receipt_number}</Text><Text style={styles.meta}>{formatReceivedDate(item.received_at)} · {item.supplier_invoice_number ?? '—'}</Text></View>
               </View>
             ))}
           </View>

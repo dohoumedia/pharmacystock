@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { formatDateOnly } from '@/utils/dateFormatting';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { batchSafetyStatus, isBatchSellable, sortBalancesForFefoDisplay, type BatchSafetyStatus } from '@/domain/inventorySafety';
@@ -435,9 +436,7 @@ function InventoryTable({ balances, countMode, counted, onCounted }: { balances:
             <Text style={[styles.productName, styles.productColumn]}>{item.product_name}</Text>
             <Text style={[styles.meta, styles.lotColumn]}>{item.lot_number}</Text>
             <Text style={[styles.meta, styles.expiryColumn]}>
-              {new Intl.DateTimeFormat(i18n.language, {
-                dateStyle: 'medium',
-              }).format(new Date(`${item.expiry_date}T00:00:00Z`))}
+              {formatDateOnly(item.expiry_date, i18n.language)}
             </Text>
             <View style={styles.statusColumn}>
               <BatchStatusBadge status={safety} />
@@ -478,7 +477,7 @@ function InventoryCard({
   counted: string;
   onCounted: (value: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const safety = batchSafetyStatus(balance.batch_status, balance.expiry_date);
   const sellable = isBatchSellable(balance.batch_status, balance.expiry_date);
   return (
@@ -491,7 +490,7 @@ function InventoryCard({
         {t('catalog.lotNumber')}: {balance.lot_number}
       </Text>
       <Text style={styles.meta}>
-        {t('catalog.expiryDate')}: {balance.expiry_date}
+        {t('catalog.expiryDate')}: {formatDateOnly(balance.expiry_date, i18n.language)}
       </Text>
       <View style={styles.metrics}>
         <Text style={styles.metric}>
