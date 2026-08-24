@@ -71,6 +71,23 @@
       "noFilteredBatches": "Aucun lot ne correspond à ces filtres.",
       "refreshFailed": "L’actualisation du serveur a échoué. Les derniers lots synchronisés sont affichés si disponibles."
     },
+    "purchasingView": {
+      "offlineReadOnly": "La création de fournisseurs, de bons de commande et de réceptions nécessite un contrôle d’autorisation du serveur en ligne.",
+      "serverAuthority": "Les réceptions restent en attente jusqu’à ce que le serveur accepte la transition du bon de commande et inscrive les mouvements de stock immuables.",
+      "refreshFailed": "L’actualisation du serveur a échoué. Les dernières données d’achat synchronisées sont affichées si disponibles.",
+      "selectOrder": "Sélectionnez un bon de commande ouvert pour le réceptionner.",
+      "search": "Rechercher une commande ou un fournisseur",
+      "status": "Statut de réception",
+      "noMatches": "Aucune commande ne correspond à ces filtres.",
+      "filters": { "open": "Ouvertes", "partial": "Partiellement reçues", "received": "Reçues", "all": "Toutes" },
+      "noCachedData": "Aucune donnée d’achat synchronisée n’est disponible pour cette succursale.",
+      "requiredReceiptLines": "Saisissez au moins une quantité reçue avec son numéro de lot et sa date de péremption.",
+      "requiredOrderLines": "Ajoutez au moins un produit avec une quantité valide.",
+      "statusLabel": "Statut : {{status}}",
+      "ordered": "Commandé : {{quantity}}",
+      "received": "Déjà reçu : {{quantity}}",
+      "remaining": "Restant : {{quantity}}"
+    },
     "batchStatus": {
       "active": "Actif",
       "quarantined": "En quarantaine",
