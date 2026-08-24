@@ -97,6 +97,31 @@
       "depleted": "Depleted",
       "disposed": "Disposed",
       "unknown": "Unavailable"
+    },
+    "reports": {
+      "refreshFailed": "The server refresh failed. Showing the last synchronized report data when available.",
+      "date": "Date",
+      "grossSales": "Gross sales"
+    },
+    "customers": {
+      "addTitle": "New customer",
+      "onlineOnly": "Creating and archiving customers requires an online server authorization check.",
+      "freshAuthorizationRequired": "Customer changes are locked until your permissions are freshly synchronized with the server.",
+      "refreshFailed": "The server refresh failed. Showing the last synchronized customers when available.",
+      "archiveTitle": "Archive customer?",
+      "archiveConfirm": "Archive {{name}}? Their completed transaction history will be preserved."
+    },
+    "settings": {
+      "onlineOnly": "Settings changes require an online server authorization check.",
+      "freshAuthorizationRequired": "Changes are locked until your permissions are freshly synchronized with the server.",
+      "sessionDataOffline": "Notifications, subscription, imports, and audit data are not synchronized for offline use. Any values shown are limited to this app session and may be stale.",
+      "payment": {
+        "CASH": "Cash",
+        "CARD": "Card",
+        "MOBILE_MONEY": "Mobile money",
+        "BANK_TRANSFER": "Bank transfer",
+        "OTHER": "Other"
+      }
     }
   }
 }
