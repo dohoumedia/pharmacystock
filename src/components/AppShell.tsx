@@ -36,7 +36,12 @@ function NavLink({ item, rail = false, bottom = false }: { item: NavItem; rail?:
       <Pressable
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
-        style={[styles.navItem, rail && styles.railItem, bottom && styles.bottomNavItem, active && styles.navItemActive]}
+        style={StyleSheet.flatten([
+          styles.navItem,
+          rail && styles.railItem,
+          bottom && styles.bottomNavItem,
+          active && styles.navItemActive,
+        ])}
       >
         <Text style={[styles.marker, active && styles.navTextActive]}>{item.marker}</Text>
         {!rail ? <Text style={[styles.navText, active && styles.navTextActive]}>{t(item.labelKey)}</Text> : null}
