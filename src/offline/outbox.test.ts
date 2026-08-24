@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { OutboxStore } from './outbox';
 import { ReplayPreparationError, SyncCoordinator } from './sync';
+import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
 
 function memoryStorage(): KeyValueStorage {
@@ -209,6 +210,48 @@ describe('offline outbox', () => {
       attemptCount: 2,
       idempotencyKey: 'pre-crash-key',
       lastErrorCode: 'INSUFFICIENT_STOCK',
+    });
+  });
+
+  it('stops an in-flight replay when the authenticated scope changes', async () => {
+    const storage = memoryStorage();
+    const sessionScope = new OfflineSessionScope(storage);
+    sessionScope.bindUser('user-a');
+    const replayScope = sessionScope.replayScope();
+    const outbox = new OutboxStore(storage);
+    outbox.enqueue({ id: 'sale-1', kind: 'SALE', organizationId: 'org', idempotencyKey: 'key-1', payload: {}, createdAt: '2026-08-23T18:01:00.000Z' });
+    outbox.enqueue({ id: 'sale-2', kind: 'SALE', organizationId: 'org', idempotencyKey: 'key-2', payload: {}, createdAt: '2026-08-23T18:02:00.000Z' });
+    let releaseFirst: (() => void) | undefined;
+    const firstStarted = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let finishFirst: (() => void) | undefined;
+    const firstBlocked = new Promise<void>((resolve) => { finishFirst = resolve; });
+    const seen: string[] = [];
+    const coordinator = new SyncCoordinator(outbox, {
+      SALE: async (operation) => {
+        seen.push(operation.idempotencyKey);
+        releaseFirst?.();
+        await firstBlocked;
+        return { status: 'SYNCED' };
+      },
+    }, { canReplay: () => sessionScope.isReplayScopeCurrent(replayScope) });
+
+    const replay = coordinator.replayPending();
+    await firstStarted;
+    sessionScope.bindUser(null);
+    finishFirst?.();
+    await replay;
+
+    expect(seen).toEqual(['key-1']);
+    expect(outbox.list()).toEqual([]);
+
+    sessionScope.bindUser('user-a');
+    expect(outbox.list().find((item) => item.id === 'sale-1')).toMatchObject({
+      status: 'SYNCING',
+      idempotencyKey: 'key-1',
+    });
+    expect(outbox.list().find((item) => item.id === 'sale-2')).toMatchObject({
+      status: 'PENDING',
+      idempotencyKey: 'key-2',
     });
   });
 });

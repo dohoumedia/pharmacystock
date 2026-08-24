@@ -2,6 +2,7 @@ import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxStore, createOutboxId, type OutboxOperation } from './outbox';
 import { SyncCoordinator, ReplayPreparationError, type ReplayResult } from './sync';
+import { offlineSessionScope } from './sessionScope';
 import type { CartLine, PaymentInput, SaleQuote } from '../services/sales';
 
 export type OfflineSalePayload = {
@@ -120,18 +121,19 @@ type ReplayPendingSalesOptions = {
 
 type ReplayAuthClient = {
   getSession: () => Promise<{
-    data: { session: { expires_at?: number } | null };
+    data: { session: { expires_at?: number; user: { id: string } } | null };
     error: { status?: number } | null;
   }>;
   refreshSession: () => Promise<{
-    data: { session: { expires_at?: number } | null };
+    data: { session: { expires_at?: number; user: { id: string } } | null };
     error: { status?: number } | null;
   }>;
 };
 
 function preparationFailure(code: string, error: { status?: number } | null) {
   const status = error?.status;
-  return new ReplayPreparationError(code, status === undefined || status >= 500);
+  const retryable = status === undefined || status >= 500 || status === 408 || status === 425 || status === 429;
+  return new ReplayPreparationError(code, retryable);
 }
 
 export async function refreshSessionForReplay(
@@ -145,10 +147,10 @@ export async function refreshSessionForReplay(
   if (!data.session) throw new ReplayPreparationError('AUTH_SESSION_MISSING', false);
 
   const expiresAt = data.session.expires_at;
-  if (expiresAt && expiresAt * 1000 > now.getTime() + refreshLeewaySeconds * 1000) return;
+  if (expiresAt && expiresAt * 1000 > now.getTime() + refreshLeewaySeconds * 1000) return data.session.user.id;
 
   const refreshed = await auth.refreshSession();
-  if (!refreshed.error && refreshed.data.session) return;
+  if (!refreshed.error && refreshed.data.session) return refreshed.data.session.user.id;
   throw preparationFailure('AUTH_SESSION_REFRESH_FAILED', refreshed.error);
 }
 
@@ -158,6 +160,8 @@ export async function replayPendingSales(
 ) {
   const { completeSale } = await import('../services/sales');
   const localStore = options.localStore ?? new LocalStore();
+  const replayScope = offlineSessionScope.replayScope();
+  let refreshedUserId: string | null = null;
   const coordinator = new SyncCoordinator(outbox, {
     SALE: async (operation: OutboxOperation) => {
       const payload = operation.payload as OfflineSalePayload;
@@ -179,8 +183,10 @@ export async function replayPendingSales(
     },
   }, {
     now: options.now,
+    canReplay: () => offlineSessionScope.isReplayScopeCurrent(replayScope)
+      && (refreshedUserId === null || refreshedUserId === replayScope.userId),
     beforeReplay: async () => {
-      await refreshSessionForReplay(options.now?.() ?? new Date(), options.refreshLeewaySeconds);
+      refreshedUserId = await refreshSessionForReplay(options.now?.() ?? new Date(), options.refreshLeewaySeconds);
       const [{ loadInventoryBalances }, { cachePosStockSnapshot }] = await Promise.all([
         import('../services/inventory'),
         import('./offlinePosCatalog'),

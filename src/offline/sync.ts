@@ -12,6 +12,7 @@ type SyncCoordinatorOptions = {
   retryBaseMs?: number;
   retryMaxMs?: number;
   beforeReplay?: () => Promise<void>;
+  canReplay?: () => boolean;
 };
 
 export class ReplayPreparationError extends Error {
@@ -30,6 +31,7 @@ export class SyncCoordinator {
   private readonly retryBaseMs: number;
   private readonly retryMaxMs: number;
   private readonly beforeReplay?: () => Promise<void>;
+  private readonly canReplay: () => boolean;
 
   constructor(
     private readonly outbox: OutboxStore,
@@ -40,6 +42,7 @@ export class SyncCoordinator {
     this.retryBaseMs = options.retryBaseMs ?? 2_000;
     this.retryMaxMs = options.retryMaxMs ?? 5 * 60_000;
     this.beforeReplay = options.beforeReplay;
+    this.canReplay = options.canReplay ?? (() => true);
   }
 
   replayPending(): Promise<{ synced: number; conflicts: number; failed: number }> {
@@ -62,10 +65,13 @@ export class SyncCoordinator {
     let failed = 0;
 
     const pending = this.outbox.pending(this.now());
+    if (!this.canReplay()) return { synced, conflicts, failed };
     if (pending.length > 0 && this.beforeReplay) {
       try {
         await this.beforeReplay();
+        if (!this.canReplay()) return { synced, conflicts, failed };
       } catch (error) {
+        if (!this.canReplay()) return { synced, conflicts, failed };
         const preparationError = error instanceof ReplayPreparationError
           ? error
           : new ReplayPreparationError('REPLAY_PREPARATION_FAILED', true);
@@ -86,6 +92,7 @@ export class SyncCoordinator {
     }
 
     for (const operation of pending) {
+      if (!this.canReplay()) return { synced, conflicts, failed };
       const handler = this.handlers[operation.kind];
       const nextAttemptCount = operation.attemptCount + 1;
       const attemptAt = this.now().toISOString();
@@ -112,6 +119,7 @@ export class SyncCoordinator {
 
       try {
         const result = await handler(operation);
+        if (!this.canReplay()) return { synced, conflicts, failed };
         if (result.status === 'SYNCED') {
           this.outbox.update(operation.id, {
             status: 'SYNCED',
@@ -143,6 +151,7 @@ export class SyncCoordinator {
           conflicts += 1;
         }
       } catch {
+        if (!this.canReplay()) return { synced, conflicts, failed };
         this.outbox.update(operation.id, {
           status: 'FAILED',
           nextAttemptAt: this.retryAt(nextAttemptCount),
