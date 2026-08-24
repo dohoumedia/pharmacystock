@@ -172,6 +172,9 @@ Individual records pending upload should carry a visible status badge.
 - authorization is revalidated by Supabase on replay; a stale permission snapshot never grants server authority
 
 ## Sync lifecycle hardening
+- Auth restoration remains loading until Supabase returns a persisted session or confirms that none exists. A temporary null initialization/refresh callback is not treated as sign-out.
+- `SIGNED_OUT` is the authoritative runtime event for clearing the active user scope. Successful explicit sign-out performs the same cleanup as a deterministic fallback.
+- Refresh and same-user route/layout remounts preserve the offline scope; a real user change still clears the readable replica and restores only that user's pending-intent vault.
 - Reconnect replay refreshes an expired or near-expiry session before reading or submitting server state.
 - Sensitive queued operations pull the essential authoritative read model before replay; POS refreshes branch inventory snapshots.
 - Preparation failures do not bypass replay semantics: transient failures retain exponential backoff, while deterministic authentication failures become conflicts.
