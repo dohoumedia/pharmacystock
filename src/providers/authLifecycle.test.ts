@@ -92,17 +92,42 @@ describe('authenticated session lifecycle', () => {
     expect(bindUser).toHaveBeenLastCalledWith('user-a');
   });
 
-  it('keeps restoration pending after a transient getSession failure', async () => {
+  it('ends loading after a transient getSession failure without treating it as sign-out', async () => {
+    vi.useFakeTimers();
     const auth = fakeAuth(Promise.resolve({ data: { session: null }, error: new Error('temporary') }));
     const commit = vi.fn();
     const bindUser = vi.fn();
-    startAuthLifecycle(auth.client, { commit, bindUser });
+    const lifecycle = startAuthLifecycle(auth.client, { commit, bindUser }, 2_000);
     auth.emit('INITIAL_SESSION', null);
     await Promise.resolve();
     expect(commit).not.toHaveBeenCalled();
     expect(bindUser).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(commit).toHaveBeenLastCalledWith(null, false);
+    expect(bindUser).not.toHaveBeenCalled();
+
     auth.emit('SIGNED_IN', session('user-a'));
     expect(commit).toHaveBeenLastCalledWith(expect.anything(), false);
+    lifecycle.stop();
+    vi.useRealTimers();
+  });
+
+  it('does not remain loading when persisted-session resolution never completes', async () => {
+    vi.useFakeTimers();
+    const restoration = deferred<{ data: { session: Session | null }; error: unknown }>();
+    const auth = fakeAuth(restoration.promise);
+    const commit = vi.fn();
+    const bindUser = vi.fn();
+    const lifecycle = startAuthLifecycle(auth.client, { commit, bindUser }, 2_000);
+
+    auth.emit('INITIAL_SESSION', null);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(commit).toHaveBeenLastCalledWith(null, false);
+    expect(bindUser).not.toHaveBeenCalled();
+    lifecycle.stop();
+    vi.useRealTimers();
   });
 
   it('prevents stale-user cache or pending-intent replay after sign-out and user switch', () => {
