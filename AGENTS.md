@@ -11,7 +11,7 @@ Build a production-grade bilingual pharmacy operations SaaS for Web, iOS and And
 - Before any Supabase query, migration, advisor check, branch operation, or generated type operation, verify the target resolves to `Pharmacy Stock` with ref `jeravdvssuzbthkxfvjy`. If not, stop. Never operate on another Supabase project for this repository.
 
 ## Read before coding
-Consult in this order: `AGENTS.md` → `docs/CODEX_PRODUCTION_HANDOFF.md` → `docs/UI_UX_BLUEPRINT.md` → `docs/OFFLINE_FIRST_ARCHITECTURE.md` → PRD → functional requirements → user stories/business rules → security/RLS → QA. If specifications materially conflict, document the conflict and stop that portion rather than guessing.
+Consult in this order: `AGENTS.md` → `docs/AGENT_OPERATING_MODEL.md` → `docs/CODEX_PRODUCTION_HANDOFF.md` → `docs/UI_UX_BLUEPRINT.md` → `docs/OFFLINE_FIRST_ARCHITECTURE.md` → PRD → functional requirements → user stories/business rules → security/RLS → QA. If specifications materially conflict, document the conflict and stop that portion rather than guessing.
 
 ## Priority
 P0 core first. P1 network only after P0 is stable. P2 intelligence only after sufficient operational data exists.
@@ -117,6 +117,21 @@ Before work is considered complete, run and pass:
 
 ## Documentation and traceability
 Behavior changes must update relevant requirements, API/schema docs, tests and translations. Significant implementation work references requirement IDs where available.
+
+## Agent operating model
+`docs/AGENT_OPERATING_MODEL.md` is mandatory for future multi-agent/Codex work.
+
+Apply these defaults automatically unless a stricter task-specific instruction overrides them:
+- Use Low reasoning for deterministic, low-risk mechanical work.
+- Use Medium reasoning for normal feature implementation, QA, tests, ordinary debugging and routine review.
+- Use High reasoning for architecture, security, database/RLS/RPC work, auth/session lifecycle, offline replay/reconciliation, inventory/financial integrity, concurrency, cross-user isolation, contradictory evidence, or repeated failures.
+- Parallelize independent implementation only; serialize integration and merge one PR at a time.
+- Every concurrent worker uses its own branch, worktree and localhost port.
+- QA remains independent and does not silently modify product code.
+- The Supervisor owns decomposition, merge order and final merge/UAT recommendations.
+- Do not send full project history to every worker; provide the current `main` SHA, scoped objective, relevant invariants, acceptance criteria, validation and forbidden scope.
+- Escalate Low → Medium → High when failures or uncertainty increase rather than starting every task at maximum reasoning.
+- Tooling limitations must be distinguished from real product defects by independent reproduction where practical.
 
 ## When Codex must stop
 Stop and report rather than guess when specifications conflict, regulatory assumptions are required, a migration risks data loss, security is unclear, clinical behavior is requested without specification, an external provider decision is required, or scope materially expands.
