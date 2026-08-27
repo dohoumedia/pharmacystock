@@ -16,5 +16,15 @@ export function formatDateOnly(value: string | null | undefined, locale: string)
 /** Formats a timestamp/timestamptz as the user's local calendar date. */
 export function formatInstantDate(value: string | null | undefined, locale: string): string {
   if (!value) return '—';
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+}
+
+/** Formats a timestamp/timestamptz as a localized date and time. */
+export function formatInstantDateTime(value: string | null | undefined, locale: string): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
