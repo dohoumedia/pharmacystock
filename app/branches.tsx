@@ -74,7 +74,7 @@ export default function BranchesScreen() {
             <TextInput value={city} onChangeText={setCity} placeholder={t('organization.city')} style={styles.input} />
             <TextInput value={phone} onChangeText={setPhone} placeholder={t('organization.phone')} style={styles.input} keyboardType="phone-pad" />
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable disabled={saving || !name.trim()} onPress={() => void submit()} style={[styles.primaryButton, (saving || !name.trim()) && styles.disabled]}>
+            <Pressable accessibilityRole="button" disabled={saving || !name.trim()} onPress={() => void submit()} style={[styles.primaryButton, (saving || !name.trim()) && styles.disabled]}>
               <Text style={styles.primaryButtonText}>{saving ? t('common.loading') : t('common.save')}</Text>
             </Pressable>
           </View>
@@ -95,11 +95,11 @@ const styles = StyleSheet.create({
   branchName: { fontSize: 18, fontWeight: '700', color: '#102A5C' },
   meta: { color: '#667085', fontSize: 13 },
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, gap: 12, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 1 },
-  input: { borderWidth: 1, borderColor: '#D0D5DD', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#FFFFFF', color: '#101828' },
+  input: { minHeight: 44, borderWidth: 1, borderColor: '#D0D5DD', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#FFFFFF', color: '#101828' },
   error: { color: '#9F1239', fontSize: 14 },
-  primaryButton: { alignSelf: 'flex-start', borderRadius: 10, backgroundColor: '#102A5C', paddingVertical: 12, paddingHorizontal: 18 },
+  primaryButton: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', borderRadius: 10, backgroundColor: '#102A5C', paddingVertical: 12, paddingHorizontal: 18 },
   primaryButtonText: { color: '#FFFFFF', fontWeight: '700' },
-  secondaryButton: { borderWidth: 1, borderColor: '#98A2B3', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
+  secondaryButton: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#98A2B3', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
   secondaryButtonText: { color: '#344159', fontWeight: '700' },
   disabled: { opacity: 0.45 },
 });
