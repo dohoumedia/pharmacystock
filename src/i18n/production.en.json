@@ -45,7 +45,7 @@
       "offline": "Offline · cached operational data",
       "syncing": "Refreshing from the pharmacy server…",
       "stale": "Cached data may be stale",
-      "synced": "Inventory data synchronized",
+      "synced": "Data synchronized",
       "lastSynced": "Last synchronized: {{date}}",
       "noCachedData": "No synchronized data is available on this device.",
       "never": "Never"
@@ -110,6 +110,20 @@
       "refreshFailed": "The server refresh failed. Showing the last synchronized customers when available.",
       "archiveTitle": "Archive customer?",
       "archiveConfirm": "Archive {{name}}? Their completed transaction history will be preserved."
+    },
+    "operations": {
+      "unknownStatus": "Status unavailable",
+      "unknownImportType": "Import type unavailable",
+      "notificationUnavailable": "Notification details unavailable",
+      "subscriptionPlan": { "core": "Pharmacy Stock Core" },
+      "channel": { "email": "Email", "sms": "Text message", "whatsapp": "WhatsApp", "push": "Push notification", "unavailable": "Notification channel unavailable" },
+      "customerLocale": { "english": "English", "french": "French", "unavailable": "Language unavailable" },
+      "subscriptionStatus": { "notActivated": "Not activated", "trial": "Trial", "active": "Active", "pastDue": "Payment overdue", "grace": "Grace period", "suspended": "Suspended", "cancelled": "Cancelled" },
+      "importType": { "products": "Products", "suppliers": "Suppliers", "customers": "Customers", "openingStock": "Opening stock" },
+      "importStatus": { "draft": "Draft", "validating": "Validating", "ready": "Ready to import", "committing": "Importing", "completed": "Completed", "failed": "Failed", "cancelled": "Cancelled" },
+      "auditEvent": "{{entity}} {{action}}",
+      "auditAction": { "created": "created", "updated": "updated", "deleted": "deleted", "received": "received", "changed": "changed" },
+      "auditEntity": { "record": "Record", "category": "Category", "manufacturer": "Manufacturer", "product": "Product", "batch": "Batch", "organization": "Pharmacy", "branch": "Branch", "membership": "Staff membership", "customer": "Customer", "settings": "Pharmacy settings", "importJob": "Import", "purchaseOrder": "Purchase order", "purchaseReceipt": "Purchase receipt" }
     },
     "settings": {
       "onlineOnly": "Settings changes require an online server authorization check.",

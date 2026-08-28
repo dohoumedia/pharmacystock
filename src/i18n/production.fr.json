@@ -45,7 +45,7 @@
       "offline": "Hors ligne · données opérationnelles en cache",
       "syncing": "Actualisation depuis le serveur de la pharmacie…",
       "stale": "Les données en cache peuvent être anciennes",
-      "synced": "Données de stock synchronisées",
+      "synced": "Données synchronisées",
       "lastSynced": "Dernière synchronisation : {{date}}",
       "noCachedData": "Aucune donnée synchronisée n’est disponible sur cet appareil.",
       "never": "Jamais"
@@ -110,6 +110,20 @@
       "refreshFailed": "L’actualisation du serveur a échoué. Les derniers clients synchronisés sont affichés si disponibles.",
       "archiveTitle": "Archiver le client ?",
       "archiveConfirm": "Archiver {{name}} ? Son historique de transactions terminées sera conservé."
+    },
+    "operations": {
+      "unknownStatus": "Statut indisponible",
+      "unknownImportType": "Type d’import indisponible",
+      "notificationUnavailable": "Détails de notification indisponibles",
+      "subscriptionPlan": { "core": "Pharmacy Stock Core" },
+      "channel": { "email": "E-mail", "sms": "SMS", "whatsapp": "WhatsApp", "push": "Notification push", "unavailable": "Canal de notification indisponible" },
+      "customerLocale": { "english": "Anglais", "french": "Français", "unavailable": "Langue indisponible" },
+      "subscriptionStatus": { "notActivated": "Non activé", "trial": "Période d’essai", "active": "Actif", "pastDue": "Paiement en retard", "grace": "Période de grâce", "suspended": "Suspendu", "cancelled": "Annulé" },
+      "importType": { "products": "Produits", "suppliers": "Fournisseurs", "customers": "Clients", "openingStock": "Stock initial" },
+      "importStatus": { "draft": "Brouillon", "validating": "Validation en cours", "ready": "Prêt à importer", "committing": "Importation en cours", "completed": "Terminé", "failed": "Échec", "cancelled": "Annulé" },
+      "auditEvent": "{{entity}} : {{action}}",
+      "auditAction": { "created": "créé", "updated": "mis à jour", "deleted": "supprimé", "received": "réceptionné", "changed": "modifié" },
+      "auditEntity": { "record": "Enregistrement", "category": "Catégorie", "manufacturer": "Fabricant", "product": "Produit", "batch": "Lot", "organization": "Pharmacie", "branch": "Succursale", "membership": "Affectation du personnel", "customer": "Client", "settings": "Paramètres de la pharmacie", "importJob": "Import", "purchaseOrder": "Bon de commande", "purchaseReceipt": "Réception" }
     },
     "settings": {
       "onlineOnly": "Les modifications des paramètres nécessitent un contrôle d’autorisation du serveur en ligne.",
