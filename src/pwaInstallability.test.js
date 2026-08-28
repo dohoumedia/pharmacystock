@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 
 import { describe, expect, it } from 'vitest';
 
