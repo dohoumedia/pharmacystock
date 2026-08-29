@@ -11,6 +11,7 @@ import sprint7Fr from './sprint7.fr.json';
 import sprint8En from './sprint8.en.json';
 import sprint8Fr from './sprint8.fr.json';
 import { getPersistedLocale, persistLocale } from './localePersistence';
+import { posPresentationTranslations } from './posPresentationTranslations';
 
 const deviceLanguage = getLocales()[0]?.languageCode === 'en' ? 'en' : 'fr';
 const configuredLanguage = process.env.EXPO_PUBLIC_DEFAULT_LOCALE;
@@ -38,6 +39,8 @@ const initialization = i18n.use(initReactI18next).init({
 // Subscribe only after initialization so a device/organization default is not
 // mistaken for an explicit user choice. Every later language change is durable.
 void initialization.then(() => {
+  i18n.addResourceBundle('en', 'translation', posPresentationTranslations.en, true, true);
+  i18n.addResourceBundle('fr', 'translation', posPresentationTranslations.fr, true, true);
   i18n.on('languageChanged', persistLocale);
 });
 
