@@ -10,6 +10,8 @@ import sprint7En from './sprint7.en.json';
 import sprint7Fr from './sprint7.fr.json';
 import sprint8En from './sprint8.en.json';
 import sprint8Fr from './sprint8.fr.json';
+import dashboardEn from './dashboard.en.json';
+import dashboardFr from './dashboard.fr.json';
 import { getPersistedLocale, persistLocale } from './localePersistence';
 import { posPresentationTranslations } from './posPresentationTranslations';
 
@@ -28,8 +30,8 @@ const initialization = i18n.use(initReactI18next).init({
   fallbackLng: 'fr',
   supportedLngs: ['en', 'fr'],
   resources: {
-    en: { translation: { ...en, ...sprint7En, ...sprint8En, ...productionEn } },
-    fr: { translation: { ...fr, ...sprint7Fr, ...sprint8Fr, ...productionFr } },
+    en: { translation: { ...en, ...sprint7En, ...sprint8En, ...productionEn, ...dashboardEn } },
+    fr: { translation: { ...fr, ...sprint7Fr, ...sprint8Fr, ...productionFr, ...dashboardFr } },
   },
   interpolation: {
     escapeValue: false,
