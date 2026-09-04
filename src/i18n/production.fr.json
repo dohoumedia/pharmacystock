@@ -62,7 +62,24 @@
       "offlineReadOnly": "Les modifications du stock et les inventaires physiques nécessitent un contrôle du serveur en ligne.",
       "noFilteredStock": "Aucun stock ne correspond à ces filtres.",
       "refreshFailed": "L’actualisation du serveur a échoué. Les dernières données synchronisées sont affichées si elles existent.",
-      "cannotRead": "Votre rôle ne permet pas d’accéder au stock."
+      "cannotRead": "Votre rôle ne permet pas d’accéder au stock.",
+      "movementType": {
+        "purchaseReceipt": "Réception fournisseur",
+        "sale": "Vente",
+        "returnIn": "Retour client reçu",
+        "returnOut": "Retour expédié",
+        "transferIn": "Transfert reçu",
+        "transferOut": "Transfert expédié",
+        "damage": "Stock endommagé",
+        "expiry": "Stock périmé",
+        "adjustmentIn": "Augmentation du stock",
+        "adjustmentOut": "Diminution du stock",
+        "countCorrectionIn": "Correction d’inventaire positive",
+        "countCorrectionOut": "Correction d’inventaire négative",
+        "supplierReturn": "Retour fournisseur",
+        "disposal": "Mise au rebut",
+        "unknown": "Autre mouvement de stock"
+      }
     },
     "batchView": {
       "search": "Rechercher un produit ou un numéro de lot",

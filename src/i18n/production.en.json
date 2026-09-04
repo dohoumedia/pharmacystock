@@ -62,7 +62,24 @@
       "offlineReadOnly": "Inventory changes and stock counts require an online server check.",
       "noFilteredStock": "No stock matches these filters.",
       "refreshFailed": "Server refresh failed. Showing the last synchronized data when available.",
-      "cannotRead": "Your role does not allow inventory access."
+      "cannotRead": "Your role does not allow inventory access.",
+      "movementType": {
+        "purchaseReceipt": "Purchase receipt",
+        "sale": "Sale",
+        "returnIn": "Customer return received",
+        "returnOut": "Return sent",
+        "transferIn": "Transfer received",
+        "transferOut": "Transfer dispatched",
+        "damage": "Damaged stock",
+        "expiry": "Expired stock",
+        "adjustmentIn": "Stock increase",
+        "adjustmentOut": "Stock decrease",
+        "countCorrectionIn": "Count correction increase",
+        "countCorrectionOut": "Count correction decrease",
+        "supplierReturn": "Supplier return",
+        "disposal": "Stock disposal",
+        "unknown": "Other inventory movement"
+      }
     },
     "batchView": {
       "search": "Search product or lot number",

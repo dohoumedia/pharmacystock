@@ -6,6 +6,7 @@ import { formatDateOnly } from '@/utils/dateFormatting';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { batchSafetyStatus, isBatchSellable, sortBalancesForFefoDisplay, type BatchSafetyStatus } from '@/domain/inventorySafety';
+import { formatInventoryMovementType } from '@/domain/inventoryMovementPresentation';
 import { LocalStore } from '@/offline/localStore';
 import {
   cacheBatches,
@@ -391,7 +392,7 @@ export default function InventoryScreen() {
           {movements.length === 0 ? <Text style={styles.meta}>{t('inventory.noMovements')}</Text> : null}
           {movements.map((movement) => (
             <View key={movement.id} style={styles.movementRow}>
-              <Text style={styles.movementType}>{movement.movement_type}</Text>
+              <Text style={styles.movementType}>{formatInventoryMovementType(movement.movement_type, t)}</Text>
               <Text style={[styles.quantity, movement.quantity_delta < 0 && styles.negative]}>
                 {movement.quantity_delta > 0 ? '+' : ''}
                 {movement.quantity_delta}
