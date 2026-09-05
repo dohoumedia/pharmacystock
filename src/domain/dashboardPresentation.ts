@@ -5,6 +5,23 @@ import type { DailySalesReport } from '../services/coreCompletion';
 import type { StockTransfer } from '../services/transfers';
 
 export type StockAttention = { outOfStock: number; lowStock: number; lowStockThreshold: number | null };
+export type DashboardRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export function stockRiskLevel(attention: Pick<StockAttention, 'outOfStock' | 'lowStock'>): DashboardRiskLevel {
+  return attention.outOfStock > 0 ? 'critical' : attention.lowStock > 0 ? 'high' : 'low';
+}
+
+export function stockRiskCopyKey(attention: Pick<StockAttention, 'outOfStock' | 'lowStock'>): 'outOfStock' | 'lowStock' {
+  return attention.outOfStock > 0 || attention.lowStock === 0 ? 'outOfStock' : 'lowStock';
+}
+
+export function expiryRiskLevel(daysRemaining: (number | string | null | undefined)[]): DashboardRiskLevel {
+  return daysRemaining.some((days) => Number(days) < 0) ? 'critical' : daysRemaining.length > 0 ? 'high' : 'low';
+}
+
+export function transferRiskLevel(openTransfers: number): DashboardRiskLevel {
+  return openTransfers > 0 ? 'medium' : 'low';
+}
 
 export function getStockAttention(balances: InventoryBalanceItem[], lowStockThreshold: number | null): StockAttention {
   const eligible = balances.filter((item) => isBatchSellable(item.batch_status, item.expiry_date));
