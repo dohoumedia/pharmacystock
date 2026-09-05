@@ -1,16 +1,16 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type TextStyle, type ViewStyle } from 'react-native';
 import { colors, foreground, shape, semantic, spacing, touchTarget, typography } from '../../theme/tokens';
 import { BodyText, MetadataText, SupportingText } from './typography';
 import { badgeTone, buttonVisualStyle, textFieldVisualStyle, type BadgeTone, type ButtonVariant } from './visualStates';
 
-type ButtonProps = { label: string; onPress?: () => void; variant?: ButtonVariant; disabled?: boolean; loading?: boolean; accessibilityLabel?: string; icon?: ReactNode; style?: StyleProp<ViewStyle>; testID?: string };
-export function Button({ label, onPress, variant = 'primary', disabled = false, loading = false, accessibilityLabel, icon, style, testID }: ButtonProps) {
+type ButtonProps = { label: string; onPress?: () => void; variant?: ButtonVariant; disabled?: boolean; loading?: boolean; accessibilityLabel?: string; accessibilityState?: ComponentProps<typeof Pressable>['accessibilityState']; icon?: ReactNode; style?: StyleProp<ViewStyle>; testID?: string };
+export function Button({ label, onPress, variant = 'primary', disabled = false, loading = false, accessibilityLabel, accessibilityState, icon, style, testID }: ButtonProps) {
   const unavailable = disabled || loading;
   const textColor = variant === 'secondary' || variant === 'ghost' ? colors.primary : foreground.inverse;
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
-  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ disabled: unavailable, busy: loading }} disabled={unavailable} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} onPress={onPress} style={({ pressed }) => [styles.button, buttonVisualStyle(variant, { disabled: unavailable, focused, hovered, pressed }), style]}>
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} accessibilityState={{ ...accessibilityState, disabled: unavailable, busy: loading }} disabled={unavailable} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)} onPress={onPress} style={({ pressed }) => [styles.button, buttonVisualStyle(variant, { disabled: unavailable, focused, hovered, pressed }), style]}>
     {loading ? <ActivityIndicator color={textColor} /> : null}
     {!loading && icon ? <View accessible={false}>{icon}</View> : null}
     <Text style={[styles.buttonText, { color: textColor }]}>{label}</Text>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getExpiryAttention, getStockAttention, getTodaysSales, getTransferAttention } from './dashboardPresentation';
+import { expiryRiskLevel, getExpiryAttention, getStockAttention, getTodaysSales, getTransferAttention, stockRiskCopyKey, stockRiskLevel, transferRiskLevel } from './dashboardPresentation';
 import type { InventoryBalanceItem } from '../services/inventory';
 import type { StockTransfer } from '../services/transfers';
 
@@ -15,6 +15,16 @@ const transfer = (status: StockTransfer['status'], source = 'branch-a', destinat
 } as StockTransfer);
 
 describe('dashboard presentation', () => {
+  it('keeps risk presentation distinct from routine metrics', () => {
+    expect(stockRiskLevel({ outOfStock: 1, lowStock: 4 })).toBe('critical');
+    expect(stockRiskLevel({ outOfStock: 0, lowStock: 1 })).toBe('high');
+    expect(stockRiskCopyKey({ outOfStock: 1, lowStock: 4 })).toBe('outOfStock');
+    expect(stockRiskCopyKey({ outOfStock: 0, lowStock: 1 })).toBe('lowStock');
+    expect(expiryRiskLevel([-1, 5])).toBe('critical');
+    expect(expiryRiskLevel([5])).toBe('high');
+    expect(transferRiskLevel(1)).toBe('medium');
+    expect(transferRiskLevel(0)).toBe('low');
+  });
   it('counts only eligible depleted and configured-low batch balances', () => {
     expect(getStockAttention([balance(0), balance(2), balance(0, 'QUARANTINED')], 2)).toEqual({
       outOfStock: 1,
