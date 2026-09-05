@@ -9,6 +9,7 @@ let french = false;
 
 vi.mock('expo-router', () => ({
   Link: ({ children }: { children: ReactNode }) => children,
+  router: { replace: vi.fn() },
   usePathname: () => pathname,
 }));
 

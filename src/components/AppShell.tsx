@@ -1,5 +1,5 @@
 import { useState, type PropsWithChildren } from 'react';
-import { Link, usePathname } from 'expo-router';
+import { Link, router, usePathname } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -61,7 +61,10 @@ function SessionControl({ compact = false }: { compact?: boolean }) {
   const submit = async () => {
     if (busy) return;
     setBusy(true);
-    try { await signOut(); } finally { setBusy(false); }
+    try {
+      await signOut();
+      router.replace('/');
+    } finally { setBusy(false); }
   };
   const label = t('auth.signOut');
   return (
