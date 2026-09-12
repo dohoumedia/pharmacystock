@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { formatDateOnly } from '@/utils/dateFormatting';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
+import { Alert, Button, TextField } from '@/components/ui/controls';
+import { PageHeader, Surface } from '@/components/ui/layout';
+import { CardTitle, SupportingText } from '@/components/ui/typography';
 import { batchSafetyStatus, type BatchSafetyStatus } from '@/domain/inventorySafety';
 import { LocalStore } from '@/offline/localStore';
 import {
@@ -19,11 +22,16 @@ import {
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
 import { createBatch, loadBatches, loadProducts, type Batch, type ProductListItem } from '@/services/catalog';
-import { breakpoints, colors, radii, spacing, touchTarget } from '@/theme/tokens';
+import { breakpoints, colors, radii, semantic, spacing, touchTarget } from '@/theme/tokens';
 
 const BATCH_STATUSES = ['ACTIVE', 'QUARANTINED', 'RECALLED', 'EXPIRED', 'DEPLETED', 'DISPOSED'] as const;
 const FILTER_STATUSES: ('ALL' | BatchSafetyStatus)[] = ['ALL', ...BATCH_STATUSES];
 const localStore = new LocalStore();
+
+function SelectableChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const [focused, setFocused] = useState(false);
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected }} onBlur={() => setFocused(false)} onFocus={() => setFocused(true)} onPress={onPress} style={[styles.chip, selected && styles.chipSelected, focused && styles.chipFocused]}><Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></Pressable>;
+}
 
 export default function BatchesScreen() {
   const { t, i18n } = useTranslation();
@@ -176,19 +184,11 @@ export default function BatchesScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={[styles.container, width < breakpoints.compact && styles.compactContainer]}>
-        <View style={styles.headerRow}>
-          <View style={styles.grow}>
-            <Text accessibilityRole="header" style={styles.title}>
-              {t('catalog.batches')}
-            </Text>
-            <Text style={styles.subtitle}>{t('catalog.batchesSubtitle')}</Text>
-          </View>
-          <Link href="/products" asChild>
-            <Pressable style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>{t('catalog.manageProducts')}</Text>
-            </Pressable>
-          </Link>
-        </View>
+        <PageHeader
+          title={t('catalog.batches')}
+          subtitle={t('catalog.batchesSubtitle')}
+          action={<Link href="/products" asChild><Button label={t('catalog.manageProducts')} variant="secondary" /></Link>}
+        />
         <ReadModelStatus
           hasData={syncedAt !== null}
           loading={loading}
@@ -196,32 +196,27 @@ export default function BatchesScreen() {
           syncedAt={syncedAt}
           usingCachedData={usingCachedData}
         />
-        <Text style={styles.safetyNote}>{t('production.batchView.safetyNote')}</Text>
+        <SupportingText style={styles.safetyNote}>{t('production.batchView.safetyNote')}</SupportingText>
         {!isOnline ? (
-          <Text accessibilityRole="alert" style={styles.offlineNote}>
-            {t('production.batchView.offlineReadOnly')}
-          </Text>
+          <Alert tone="warning" title={t('production.batchView.offlineReadOnly')} />
         ) : null}
         {error ? (
-          <Text accessibilityRole="alert" style={styles.error}>
-            {error}
-          </Text>
+          <Alert tone="danger" title={error} />
         ) : null}
         <Text style={styles.sectionLabel}>{t('catalog.selectBranch')}</Text>
         <View style={styles.chips}>
           {branches.map((item) => (
-            <Pressable
+            <SelectableChip
               key={item.id}
+              label={item.name}
               onPress={() => setBranchId(item.id)}
-              style={[styles.chip, item.id === branchId && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, item.id === branchId && styles.chipTextSelected]}>{item.name}</Text>
-            </Pressable>
+              selected={item.id === branchId}
+            />
           ))}
         </View>
 
-        <View style={styles.card}>
-          <TextInput
+        <Surface tone="raised" style={styles.card}>
+          <TextField
             accessibilityLabel={t('production.batchView.search')}
             onChangeText={setQuery}
             placeholder={t('production.batchView.search')}
@@ -231,21 +226,18 @@ export default function BatchesScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.filterRow}>
               {FILTER_STATUSES.map((item) => (
-                <Pressable
+                <SelectableChip
                   key={item}
+                  label={item === 'ALL' ? t('production.batchView.allStatuses') : t(`production.batchStatus.${item.toLowerCase()}`)}
                   onPress={() => setStatusFilter(item)}
-                  style={[styles.chip, item === statusFilter && styles.chipSelected]}
-                >
-                  <Text style={[styles.chipText, item === statusFilter && styles.chipTextSelected]}>
-                    {item === 'ALL' ? t('production.batchView.allStatuses') : t(`production.batchStatus.${item.toLowerCase()}`)}
-                  </Text>
-                </Pressable>
+                  selected={item === statusFilter}
+                />
               ))}
             </View>
           </ScrollView>
-          {!loading && batches.length === 0 ? <Text style={styles.meta}>{t('catalog.noBatches')}</Text> : null}
+          {!loading && batches.length === 0 ? <SupportingText>{t('catalog.noBatches')}</SupportingText> : null}
           {batches.length > 0 && visibleBatches.length === 0 ? (
-            <Text style={styles.meta}>{t('production.batchView.noFilteredBatches')}</Text>
+            <SupportingText>{t('production.batchView.noFilteredBatches')}</SupportingText>
           ) : null}
           {desktopTable && visibleBatches.length > 0 ? (
             <View accessibilityRole="list" style={styles.table}>
@@ -275,8 +267,9 @@ export default function BatchesScreen() {
               ))}
             </View>
           ) : (
-            visibleBatches.map((batch) => (
-              <View accessibilityRole="summary" key={batch.id} style={styles.batchCard}>
+            visibleBatches.map((batch) => {
+              const safety = batchSafetyStatus(batch.status, batch.expiry_date);
+              return <View accessibilityRole="summary" key={batch.id} style={[styles.batchCard, safety !== 'ACTIVE' && styles.batchCardAttention]}>
                 <View style={styles.headerRow}>
                   <View style={styles.grow}>
                     <Text style={styles.batchName}>{productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)}</Text>
@@ -297,28 +290,28 @@ export default function BatchesScreen() {
                     {t('catalog.sellingPrice')}: {money(batch.selling_price)}
                   </Text>
                 </View>
-              </View>
-            ))
+              </View>;
+            })
           )}
-        </View>
+        </Surface>
 
         {canCreate && mutationsAuthorized && branchId && products.length > 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t('catalog.addBatch')}</Text>
+          <Surface tone="default" style={styles.card}>
+            <CardTitle>{t('catalog.addBatch')}</CardTitle>
             <Text style={styles.sectionLabel}>{t('catalog.selectProduct')}</Text>
             <View style={styles.chips}>
               {products.slice(0, 50).map((product) => (
-                <Pressable
+                <SelectableChip
                   key={product.id}
+                  label={product.name}
                   onPress={() => setProductId(product.id)}
-                  style={[styles.chip, product.id === productId && styles.chipSelected]}
-                >
-                  <Text style={[styles.chipText, product.id === productId && styles.chipTextSelected]}>{product.name}</Text>
-                </Pressable>
+                  selected={product.id === productId}
+                />
               ))}
             </View>
-            <TextInput value={lotNumber} onChangeText={setLotNumber} placeholder={t('catalog.lotNumber')} style={styles.input} />
-            <TextInput
+            <TextField accessibilityLabel={t('catalog.lotNumber')} value={lotNumber} onChangeText={setLotNumber} placeholder={t('catalog.lotNumber')} style={styles.input} />
+            <TextField
+              accessibilityLabel={t('catalog.expiryDate')}
               value={expiryDate}
               onChangeText={setExpiryDate}
               placeholder={t('catalog.expiryDate')}
@@ -326,14 +319,16 @@ export default function BatchesScreen() {
               autoCapitalize="none"
             />
             <View style={styles.costRow}>
-              <TextInput
+              <TextField
+                accessibilityLabel={t('catalog.purchaseCost')}
                 value={purchaseCost}
                 onChangeText={setPurchaseCost}
                 placeholder={t('catalog.purchaseCost')}
                 style={[styles.input, styles.grow]}
                 keyboardType="decimal-pad"
               />
-              <TextInput
+              <TextField
+                accessibilityLabel={t('catalog.sellingPrice')}
                 value={sellingPrice}
                 onChangeText={setSellingPrice}
                 placeholder={t('catalog.sellingPrice')}
@@ -344,22 +339,12 @@ export default function BatchesScreen() {
             <Text style={styles.sectionLabel}>{t('catalog.status')}</Text>
             <View style={styles.chips}>
               {BATCH_STATUSES.map((item) => (
-                <Pressable key={item} onPress={() => setStatus(item)} style={[styles.chip, item === status && styles.chipSelected]}>
-                  <Text style={[styles.chipText, item === status && styles.chipTextSelected]}>
-                    {t(`production.batchStatus.${item.toLowerCase()}`)}
-                  </Text>
-                </Pressable>
+                <SelectableChip key={item} label={t(`production.batchStatus.${item.toLowerCase()}`)} onPress={() => setStatus(item)} selected={item === status} />
               ))}
             </View>
-            <TextInput value={notes} onChangeText={setNotes} placeholder={t('catalog.notes')} style={styles.input} />
-            <Pressable
-              disabled={saving || !productId || !lotNumber.trim() || !expiryDate.trim()}
-              onPress={() => void submit()}
-              style={[styles.primaryButton, (saving || !productId || !lotNumber.trim() || !expiryDate.trim()) && styles.disabled]}
-            >
-              <Text style={styles.primaryButtonText}>{saving ? t('common.loading') : t('common.save')}</Text>
-            </Pressable>
-          </View>
+            <TextField accessibilityLabel={t('catalog.notes')} value={notes} onChangeText={setNotes} placeholder={t('catalog.notes')} style={styles.input} />
+            <Button disabled={saving || !productId || !lotNumber.trim() || !expiryDate.trim()} label={saving ? t('common.loading') : t('common.save')} loading={saving} onPress={() => void submit()} />
+          </Surface>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -400,14 +385,7 @@ const styles = StyleSheet.create({
   safetyNote: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   offlineNote: { color: colors.warning, fontWeight: '700', fontSize: 13 },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
     gap: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 1,
   },
   batchCard: {
     borderWidth: 1,
@@ -416,6 +394,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
+  batchCardAttention: { backgroundColor: semantic.warning.background, borderColor: semantic.warning.border },
   costRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   table: {
     borderWidth: 1,
@@ -430,9 +409,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#EAECF0',
+    borderBottomColor: colors.border,
   },
-  tableHeader: { minHeight: 42, backgroundColor: '#F9FAFB' },
+  tableHeader: { minHeight: 42, backgroundColor: colors.background },
   tableHeading: {
     color: colors.muted,
     fontSize: 11,
@@ -466,12 +445,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.pill,
     paddingHorizontal: spacing.md,
+    maxWidth: '100%',
   },
   chipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  chipText: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  chipFocused: { borderWidth: 2, borderColor: colors.accent },
+  chipText: { color: colors.text, fontSize: 13, fontWeight: '700', flexShrink: 1 },
   chipTextSelected: { color: colors.surface },
   primaryButton: {
     minHeight: touchTarget,
