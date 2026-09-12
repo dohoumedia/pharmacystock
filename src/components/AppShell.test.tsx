@@ -14,7 +14,11 @@ vi.mock('expo-router', () => ({
 }));
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => french && key === 'production.navigation.purchasing' ? 'Achats et réceptions avec un libellé français long' : key }),
+  useTranslation: () => ({ t: (key: string) => {
+    if (french && key === 'production.navigation.purchasing') return 'Achats et réceptions avec un libellé français long';
+    if (key === 'auth.signOut') return french ? 'Se déconnecter' : 'Sign out';
+    return key;
+  } }),
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -154,7 +158,7 @@ describe('authenticated AppShell navigation', () => {
 
     expect(markup).toContain('QA Pharmacy');
     expect(markup).toContain('Main Branch');
-    expect(markup).toContain('auth.signOut');
+    expect(markup).toContain('Sign out');
     expect(markup).toContain('sync-status');
   });
 
@@ -173,5 +177,27 @@ describe('authenticated AppShell navigation', () => {
     const markup = renderToStaticMarkup(<AppShell><main>purchasing-screen</main></AppShell>);
 
     expect(markup).toContain('Achats et réceptions avec un libellé français long');
+  });
+
+  it.each([
+    ['tablet', 768, 'Sign out'],
+    ['mobile', 390, 'Sign out'],
+  ])('keeps the top-bar sign-out label visible at %s widths', (_layout, width, label) => {
+    windowWidth = width;
+
+    const markup = renderToStaticMarkup(<AppShell><main>inventory-screen</main></AppShell>);
+
+    expect(markup).toContain(`aria-label=\"${label}\"`);
+    expect(markup).toContain(`>${label}<`);
+  });
+
+  it('keeps the French top-bar sign-out label visible on mobile', () => {
+    french = true;
+    windowWidth = 390;
+
+    const markup = renderToStaticMarkup(<AppShell><main>inventory-screen</main></AppShell>);
+
+    expect(markup).toContain('aria-label=\"Se déconnecter\"');
+    expect(markup).toContain('>Se déconnecter<');
   });
 });

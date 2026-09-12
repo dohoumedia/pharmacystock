@@ -53,7 +53,7 @@ function NavLink({ item, rail = false, bottom = false }: { item: NavItem; rail?:
   );
 }
 
-function SessionControl({ compact = false }: { compact?: boolean }) {
+function SessionControl({ compact = false, inTopbar = false }: { compact?: boolean; inTopbar?: boolean }) {
   const { t } = useTranslation();
   const { signOut } = useAuth();
   const [busy, setBusy] = useState(false);
@@ -76,10 +76,10 @@ function SessionControl({ compact = false }: { compact?: boolean }) {
       onBlur={() => setFocused(false)}
       onFocus={() => setFocused(true)}
       onPress={() => void submit()}
-      style={StyleSheet.flatten([styles.sessionControl, compact && styles.sessionControlCompact, focused && styles.sessionControlFocused, busy && styles.sessionControlDisabled])}
+      style={StyleSheet.flatten([styles.sessionControl, compact && styles.sessionControlCompact, inTopbar && styles.sessionControlTopbar, focused && styles.sessionControlFocused, busy && styles.sessionControlDisabled])}
     >
-      <AppIcon color={foreground.inverse} name="signOut" size={17} />
-      {!compact ? <Text numberOfLines={1} style={styles.sessionText}>{label}</Text> : null}
+      <AppIcon color={inTopbar ? foreground.brand : foreground.inverse} name="signOut" size={17} />
+      {!compact ? <Text numberOfLines={1} style={[styles.sessionText, inTopbar && styles.sessionTextTopbar]}>{label}</Text> : null}
     </Pressable>
   );
 }
@@ -119,7 +119,7 @@ export function AppShell({ children }: PropsWithChildren) {
       <View style={styles.main}>
         <View style={[styles.topbar, { paddingTop: insets.top }]}>
           <View accessibilityLabel={context} style={styles.context}><SupportingText numberOfLines={1} style={styles.contextOrganization}>{organization?.name ?? t('app.name')}</SupportingText><MetadataText numberOfLines={1} style={styles.contextBranch}>{branch?.name ?? t('production.navigation.noContext')}</MetadataText></View>
-          <View style={styles.topbarActions}>{!desktop ? <SyncStatusBadge compact={width < breakpoints.narrow} /> : null}{!desktop ? <SessionControl compact={width < breakpoints.compact} /> : null}</View>
+          <View style={styles.topbarActions}>{!desktop ? <SyncStatusBadge compact={width < breakpoints.narrow} /> : null}{!desktop ? <SessionControl inTopbar /> : null}</View>
         </View>
         <View style={[styles.content, !desktop && { paddingBottom: 76 + insets.bottom }]}>{children}</View>
         {!desktop ? <View style={[styles.bottomNav, { paddingBottom: insets.bottom }]}>{mobileItems.map((item) => <NavLink bottom item={item} key={item.href} />)}</View> : null}
@@ -144,6 +144,6 @@ const styles = StyleSheet.create({
   navItem: { minHeight: touchTarget, borderWidth: borderWidths.focus, borderColor: 'transparent', borderRadius: shape.md, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md }, railItem: { justifyContent: 'center', paddingHorizontal: spacing.sm }, bottomNavItem: { flex: 1, minWidth: 0, flexDirection: 'column', justifyContent: 'center', gap: 2, paddingHorizontal: spacing.xs, borderRadius: shape.sm }, navItemActive: { backgroundColor: palette.navy[700], borderColor: palette.navy[600] }, navItemFocused: { borderColor: focusRing.color },
   navText: { color: palette.neutral[200], ...typography.body, fontWeight: '700', flexShrink: 1 }, bottomNavText: { ...typography.metadata, textAlign: 'center', width: '100%' }, navTextActive: { color: foreground.inverse },
   sidebarFooter: { marginTop: 'auto', gap: spacing.sm, alignItems: 'stretch' }, sidebarFooterRail: { alignItems: 'center' },
-  sessionControl: { minHeight: touchTarget, borderRadius: shape.md, borderWidth: borderWidths.hairline, borderColor: palette.navy[700], flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.md }, sessionControlCompact: { width: touchTarget, paddingHorizontal: 0 }, sessionControlFocused: { borderColor: focusRing.color, borderWidth: focusRing.width }, sessionControlDisabled: { opacity: disabledOpacity }, sessionText: { color: foreground.inverse, ...typography.supporting, fontWeight: '700' },
+  sessionControl: { minHeight: touchTarget, borderRadius: shape.md, borderWidth: borderWidths.hairline, borderColor: palette.navy[700], flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.md }, sessionControlCompact: { width: touchTarget, paddingHorizontal: 0 }, sessionControlTopbar: { backgroundColor: surface.default, borderColor: border.default }, sessionControlFocused: { borderColor: focusRing.color, borderWidth: focusRing.width }, sessionControlDisabled: { opacity: disabledOpacity }, sessionText: { color: foreground.inverse, ...typography.supporting, fontWeight: '700' }, sessionTextTopbar: { color: foreground.brand },
   main: { flex: 1, minWidth: 0 }, topbar: { minHeight: 68, backgroundColor: surface.default, borderBottomWidth: borderWidths.hairline, borderBottomColor: border.subtle, paddingHorizontal: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }, context: { flex: 1, minWidth: 0, gap: 1 }, contextOrganization: { color: foreground.primary, ...typography.supporting, fontWeight: '800' }, contextBranch: { color: foreground.secondary, ...typography.metadata, fontWeight: '400' }, topbarActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 0 }, content: { flex: 1, minHeight: 0 }, bottomNav: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 76, backgroundColor: surface.default, borderTopWidth: borderWidths.hairline, borderTopColor: border.default, flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-around', paddingHorizontal: spacing.xs },
 });
