@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatDateOnly, formatInstantDate } from '@/utils/dateFormatting';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
+import { Alert, Button, FormField, PageHeader, Stack, StatusBadge, Surface, SupportingText, TextField } from '@/components/ui';
 import { LocalStore } from '@/offline/localStore';
 import { cachePurchasingReadModel, getCachedPurchasingReadModel } from '@/offline/purchasingReadModels';
 import { isSnapshotStale, OPERATIONAL_READ_MODEL_MAX_AGE_MS } from '@/offline/readModels';
@@ -23,7 +24,7 @@ import {
   type PurchaseReceipt,
   type Supplier,
 } from '@/services/purchasing';
-import { breakpoints, colors, radii, spacing, touchTarget } from '@/theme/tokens';
+import { border, borderWidths, breakpoints, disabledOpacity, focusRing, foreground, semantic, shape, spacing, surface, touchTarget, typography } from '@/theme/tokens';
 import { filterPurchaseOrders, purchasingLayout, purchasingMutationAllowed, type PurchaseOrderFilter } from '@/domain/purchasingState';
 
 type Tab = 'orders' | 'suppliers' | 'receipts';
@@ -31,6 +32,49 @@ type DraftLine = { productId: string; quantity: string; unitCost: string };
 type ReceiptDraft = { quantity: string; unitCost: string; lotNumber: string; expiryDate: string };
 
 const localStore = new LocalStore();
+
+function SelectableChip({ label, selected = false, disabled = false, onPress }: { label: string; selected?: boolean; disabled?: boolean; onPress: () => void }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPress={onPress}
+      style={[styles.chip, selected && styles.chipSelected, focused && styles.chipFocused, disabled && styles.disabled]}
+    >
+      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function purchaseOrderTone(status: PurchaseOrderWithSupplier['status']): 'neutral' | 'success' | 'warning' | 'info' {
+  if (status === 'received') return 'success';
+  if (status === 'partially_received') return 'info';
+  if (status === 'ordered') return 'warning';
+  return 'neutral';
+}
+
+function FocusableRow({ accessibilityLabel, children, disabled = false, onPress, style }: { accessibilityLabel: string; children: ReactNode; disabled?: boolean; onPress: () => void; style: StyleProp<ViewStyle> }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(true)}
+      onPress={onPress}
+      style={[style, focused && styles.rowFocused, disabled && styles.disabled]}
+    >
+      {children}
+    </Pressable>
+  );
+}
 
 export default function PurchasingScreen() {
   const { t, i18n } = useTranslation();
@@ -260,32 +304,22 @@ export default function PurchasingScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={[styles.container, compact && styles.compactContainer]}>
-        <View style={styles.headerRow}>
-          <View style={styles.grow}>
-            <Text style={styles.title}>{t('purchasing.title')}</Text>
-            <Text style={styles.subtitle}>{t('purchasing.subtitle')}</Text>
+        <PageHeader
+          title={t('purchasing.title')}
+          subtitle={t('purchasing.subtitle')}
+          action={<Link href="/" asChild><Button label={t('organization.back')} variant="secondary" /></Link>}
+        />
+
+        <Surface tone="inset" style={styles.contextSurface}>
+          <FormField label={t('organization.branch')}>
+            <View style={styles.chips}>
+              {branches.map((item) => <SelectableChip key={item.id} label={item.name} selected={item.id === branch?.id} onPress={() => setBranchId(item.id)} />)}
+            </View>
+          </FormField>
+          <View accessibilityRole="tablist" style={styles.chips}>
+            {(['orders', 'suppliers', 'receipts'] as Tab[]).map((item) => <SelectableChip key={item} label={t(`purchasing.tabs.${item}`)} selected={tab === item} onPress={() => setTab(item)} />)}
           </View>
-          <Link href="/" asChild>
-            <Pressable style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('organization.back')}</Text></Pressable>
-          </Link>
-        </View>
-
-        <Text style={styles.label}>{t('organization.branch')}</Text>
-        <View style={styles.chips}>
-          {branches.map((item) => (
-            <Pressable key={item.id} onPress={() => setBranchId(item.id)} style={[styles.chip, item.id === branch?.id && styles.chipSelected]}>
-              <Text style={[styles.chipText, item.id === branch?.id && styles.chipTextSelected]}>{item.name}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={styles.chips}>
-          {(['orders', 'suppliers', 'receipts'] as Tab[]).map((item) => (
-            <Pressable key={item} onPress={() => setTab(item)} style={[styles.chip, tab === item && styles.chipSelected]}>
-              <Text style={[styles.chipText, tab === item && styles.chipTextSelected]}>{t(`purchasing.tabs.${item}`)}</Text>
-            </Pressable>
-          ))}
-        </View>
+        </Surface>
 
         <ReadModelStatus
           loading={loading}
@@ -294,133 +328,123 @@ export default function PurchasingScreen() {
           syncedAt={syncedAt}
           hasData={suppliers.length + orders.length + receipts.length > 0}
         />
-        {!mutationsAuthorized ? <Text accessibilityRole="alert" style={styles.offlineNote}>{t('production.purchasingView.offlineReadOnly')}</Text> : null}
-        <Text style={styles.authorityNote}>{t('production.purchasingView.serverAuthority')}</Text>
-        {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-        {loading && !usingCachedData ? <Text style={styles.meta}>{t('common.loading')}</Text> : null}
-        {!loading && !syncedAt && !error ? <Text style={styles.meta}>{t('production.purchasingView.noCachedData')}</Text> : null}
+        {!mutationsAuthorized ? <Alert tone="warning" title={t('production.purchasingView.offlineReadOnly')} /> : null}
+        <SupportingText style={styles.authorityNote}>{t('production.purchasingView.serverAuthority')}</SupportingText>
+        {error ? <Alert tone="danger" title={error} /> : null}
+        {loading && !usingCachedData ? <SupportingText style={styles.meta}>{t('common.loading')}</SupportingText> : null}
+        {!loading && !syncedAt && !error ? <Alert tone="info" title={t('production.purchasingView.noCachedData')} /> : null}
 
         {tab === 'suppliers' ? (
           <>
             {canCreate && mutationsAuthorized ? (
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>{t('purchasing.addSupplier')}</Text>
-                <TextInput accessibilityLabel={t('purchasing.supplierName')} style={styles.input} placeholder={t('purchasing.supplierName')} value={supplierName} onChangeText={setSupplierName} />
-                <TextInput accessibilityLabel={t('organization.phone')} style={styles.input} placeholder={t('organization.phone')} value={supplierPhone} onChangeText={setSupplierPhone} />
-                <TextInput accessibilityLabel={t('auth.email')} autoCapitalize="none" keyboardType="email-address" style={styles.input} placeholder={t('auth.email')} value={supplierEmail} onChangeText={setSupplierEmail} />
-                <Pressable disabled={saving || !supplierName.trim()} onPress={() => void submitSupplier()} style={[styles.primaryButton, saving && styles.disabled]}>
-                  <Text style={styles.primaryButtonText}>{t('common.save')}</Text>
-                </Pressable>
-              </View>
+              <Surface tone="raised" style={styles.card}>
+                <Text accessibilityRole="header" style={styles.sectionTitle}>{t('purchasing.addSupplier')}</Text>
+                <FormField label={t('purchasing.supplierName')} required><TextField accessibilityLabel={t('purchasing.supplierName')} placeholder={t('purchasing.supplierName')} value={supplierName} onChangeText={setSupplierName} /></FormField>
+                <FormField label={t('organization.phone')}><TextField accessibilityLabel={t('organization.phone')} placeholder={t('organization.phone')} value={supplierPhone} onChangeText={setSupplierPhone} /></FormField>
+                <FormField label={t('auth.email')}><TextField accessibilityLabel={t('auth.email')} autoCapitalize="none" keyboardType="email-address" placeholder={t('auth.email')} value={supplierEmail} onChangeText={setSupplierEmail} /></FormField>
+                <Button disabled={!supplierName.trim()} label={t('common.save')} loading={saving} onPress={() => void submitSupplier()} style={styles.primaryButton} />
+              </Surface>
             ) : null}
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>{t('purchasing.suppliers')}</Text>
-              {suppliers.length === 0 ? <Text style={styles.meta}>{t('purchasing.noSuppliers')}</Text> : suppliers.map((item) => (
+            <Surface tone="default" style={styles.card}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>{t('purchasing.suppliers')}</Text>
+              {suppliers.length === 0 ? <SupportingText style={styles.meta}>{t('purchasing.noSuppliers')}</SupportingText> : suppliers.map((item) => (
                 <View key={item.id} style={styles.row}>
-                  <View><Text style={styles.name}>{item.name}</Text><Text style={styles.meta}>{item.phone ?? item.email ?? '—'}</Text></View>
-                  <Text style={styles.status}>{t('production.purchasingView.statusLabel', { status: item.status })}</Text>
+                  <View style={styles.grow}><Text style={styles.name}>{item.name}</Text><SupportingText style={styles.meta}>{item.phone ?? item.email ?? '—'}</SupportingText></View>
+                  <StatusBadge label={t('production.purchasingView.statusLabel', { status: item.status })} tone={item.status === 'active' ? 'success' : 'neutral'} />
                 </View>
               ))}
-            </View>
+            </Surface>
           </>
         ) : null}
 
         {tab === 'orders' ? (
           <>
             {canCreate && mutationsAuthorized ? (
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>{t('purchasing.newOrder')}</Text>
-                <Text style={styles.label}>{t('purchasing.supplier')}</Text>
+              <Surface tone="raised" style={styles.card}>
+                <Text accessibilityRole="header" style={styles.sectionTitle}>{t('purchasing.newOrder')}</Text>
+                <FormField label={t('purchasing.supplier')} required>
                 <View style={styles.chips}>
-                  {suppliers.map((item) => (
-                    <Pressable key={item.id} onPress={() => setSelectedSupplierId(item.id)} style={[styles.chip, selectedSupplierId === item.id && styles.chipSelected]}>
-                      <Text style={[styles.chipText, selectedSupplierId === item.id && styles.chipTextSelected]}>{item.name}</Text>
-                    </Pressable>
-                  ))}
+                  {suppliers.map((item) => <SelectableChip key={item.id} label={item.name} selected={selectedSupplierId === item.id} onPress={() => setSelectedSupplierId(item.id)} />)}
                 </View>
-                <TextInput accessibilityLabel={t('purchasing.poNumber')} style={styles.input} placeholder={t('purchasing.poNumber')} value={poNumber} onChangeText={setPoNumber} />
-                <TextInput accessibilityLabel={t('purchasing.expectedAt')} style={styles.input} placeholder={t('purchasing.expectedAt')} value={expectedAt} onChangeText={setExpectedAt} />
-                <Text style={styles.label}>{t('purchasing.addProducts')}</Text>
+                </FormField>
+                <FormField label={t('purchasing.poNumber')} required><TextField accessibilityLabel={t('purchasing.poNumber')} placeholder={t('purchasing.poNumber')} value={poNumber} onChangeText={setPoNumber} /></FormField>
+                <FormField label={t('purchasing.expectedAt')}><TextField accessibilityLabel={t('purchasing.expectedAt')} placeholder={t('purchasing.expectedAt')} value={expectedAt} onChangeText={setExpectedAt} /></FormField>
+                <FormField label={t('purchasing.addProducts')}>
                 <View style={styles.chips}>
-                  {products.slice(0, 80).map((item) => (
-                    <Pressable key={item.id} onPress={() => addOrderProduct(item.id)} style={styles.chip}>
-                      <Text style={styles.chipText}>{item.name}</Text>
-                    </Pressable>
-                  ))}
+                  {products.slice(0, 80).map((item) => <SelectableChip key={item.id} label={item.name} onPress={() => addOrderProduct(item.id)} />)}
                 </View>
+                </FormField>
                 {Object.values(draftLines).map((line) => (
-                  <View key={line.productId} style={[styles.lineEditor, compact && styles.compactEditor]}>
+                  <Surface key={line.productId} tone="inset" style={[styles.lineEditor, compact && styles.compactEditor]}>
                     <Text style={styles.growText}>{productMap.get(line.productId)}</Text>
-                    <TextInput keyboardType="decimal-pad" style={styles.smallInput} placeholder={t('purchasing.quantity')} value={line.quantity} onChangeText={(value) => updateDraftLine(line.productId, { quantity: value })} />
-                    <TextInput keyboardType="decimal-pad" style={styles.smallInput} placeholder={t('purchasing.unitCost')} value={line.unitCost} onChangeText={(value) => updateDraftLine(line.productId, { unitCost: value })} />
-                  </View>
+                    <TextField accessibilityLabel={`${productMap.get(line.productId) ?? ''} ${t('purchasing.quantity')}`} keyboardType="decimal-pad" style={styles.smallInput} placeholder={t('purchasing.quantity')} value={line.quantity} onChangeText={(value) => updateDraftLine(line.productId, { quantity: value })} />
+                    <TextField accessibilityLabel={`${productMap.get(line.productId) ?? ''} ${t('purchasing.unitCost')}`} keyboardType="decimal-pad" style={styles.smallInput} placeholder={t('purchasing.unitCost')} value={line.unitCost} onChangeText={(value) => updateDraftLine(line.productId, { unitCost: value })} />
+                  </Surface>
                 ))}
-                <Pressable disabled={saving || !selectedSupplierId || !poNumber.trim()} onPress={() => void submitOrder()} style={[styles.primaryButton, saving && styles.disabled]}>
-                  <Text style={styles.primaryButtonText}>{t('purchasing.createOrder')}</Text>
-                </Pressable>
-              </View>
+                <Button disabled={!selectedSupplierId || !poNumber.trim()} label={t('purchasing.createOrder')} loading={saving} onPress={() => void submitOrder()} style={styles.primaryButton} />
+              </Surface>
             ) : null}
 
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>{t('purchasing.orders')}</Text>
-              <TextInput accessibilityLabel={t('production.purchasingView.search')} onChangeText={setOrderQuery} placeholder={t('production.purchasingView.search')} style={styles.input} value={orderQuery} />
+            <Surface tone="default" style={styles.card}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>{t('purchasing.orders')}</Text>
+              <TextField accessibilityLabel={t('production.purchasingView.search')} onChangeText={setOrderQuery} placeholder={t('production.purchasingView.search')} value={orderQuery} />
               <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={styles.chips}>{(['open', 'partial', 'received', 'all'] as PurchaseOrderFilter[]).map((filter) => (
-                <Pressable key={filter} onPress={() => setOrderFilter(filter)} style={[styles.chip, orderFilter === filter && styles.chipSelected]}><Text style={[styles.chipText, orderFilter === filter && styles.chipTextSelected]}>{t(`production.purchasingView.filters.${filter}`)}</Text></Pressable>
+                <SelectableChip key={filter} label={t(`production.purchasingView.filters.${filter}`)} selected={orderFilter === filter} onPress={() => setOrderFilter(filter)} />
               ))}</View></ScrollView>
-              {orders.length === 0 ? <Text style={styles.meta}>{t('purchasing.noOrders')}</Text> : null}
-              {orders.length > 0 && visibleOrders.length === 0 ? <Text style={styles.meta}>{t('production.purchasingView.noMatches')}</Text> : null}
+              {orders.length === 0 ? <Alert tone="info" title={t('purchasing.noOrders')} /> : null}
+              {orders.length > 0 && visibleOrders.length === 0 ? <Alert tone="info" title={t('production.purchasingView.noMatches')} /> : null}
               {orderLayout === 'table' && visibleOrders.length > 0 ? <View style={styles.table}>
                 <View style={[styles.tableRow, styles.tableHeader]}><Text style={[styles.tableHeading, styles.poColumn]}>{t('purchasing.poNumber')}</Text><Text style={[styles.tableHeading, styles.supplierColumn]}>{t('purchasing.supplier')}</Text><Text style={[styles.tableHeading, styles.dateColumn]}>{t('purchasing.expectedAt')}</Text><Text style={[styles.tableHeading, styles.statusColumn]}>{t('production.purchasingView.status')}</Text></View>
-                {visibleOrders.map((item) => <Pressable accessibilityRole="button" key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={styles.tableRow}><Text style={[styles.name, styles.poColumn]}>{item.po_number}</Text><Text style={[styles.meta, styles.supplierColumn]}>{item.supplier_name}</Text><Text style={[styles.meta, styles.dateColumn]}>{formatExpectedDate(item.expected_at)}</Text><Text style={[styles.status, styles.statusColumn]}>{t(`purchasing.status.${item.status}`)}</Text></Pressable>)}
+                {visibleOrders.map((item) => <FocusableRow accessibilityLabel={item.po_number} key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={styles.tableRow}><Text style={[styles.name, styles.poColumn]}>{item.po_number}</Text><Text style={[styles.meta, styles.supplierColumn]}>{item.supplier_name}</Text><Text style={[styles.meta, styles.dateColumn]}>{formatExpectedDate(item.expected_at)}</Text><StatusBadge label={t(`purchasing.status.${item.status}`)} tone={purchaseOrderTone(item.status)} style={styles.statusColumn} /></FocusableRow>)}
               </View> : visibleOrders.map((item) => (
-                <Pressable accessibilityRole="button" key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={[styles.row, compact && styles.compactRow]}>
-                  <View style={styles.grow}><Text style={styles.name}>{item.po_number}</Text><Text style={styles.meta}>{item.supplier_name} · {formatExpectedDate(item.expected_at)}</Text></View>
-                  <Text style={styles.status}>{t(`purchasing.status.${item.status}`)}</Text>
-                </Pressable>
+                <FocusableRow accessibilityLabel={item.po_number} key={item.id} disabled={!isOnline} onPress={() => void openOrder(item.id)} style={[styles.row, compact && styles.compactRow]}>
+                  <View style={styles.grow}><Text style={styles.name}>{item.po_number}</Text><SupportingText style={styles.meta}>{item.supplier_name} · {formatExpectedDate(item.expected_at)}</SupportingText></View>
+                  <StatusBadge label={t(`purchasing.status.${item.status}`)} tone={purchaseOrderTone(item.status)} />
+                </FocusableRow>
               ))}
-            </View>
+            </Surface>
 
             {selectedOrderId && canReceive && mutationsAuthorized ? (
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>{t('purchasing.receiveOrder')}</Text>
-                <TextInput style={styles.input} placeholder={t('purchasing.receiptNumber')} value={receiptNumber} onChangeText={setReceiptNumber} />
-                <TextInput style={styles.input} placeholder={t('purchasing.supplierInvoice')} value={supplierInvoice} onChangeText={setSupplierInvoice} />
+              <Surface tone="raised" style={styles.card}>
+                <Text accessibilityRole="header" style={styles.sectionTitle}>{t('purchasing.receiveOrder')}</Text>
+                <Alert tone="info" title={t('production.purchasingView.serverAuthority')} />
+                <FormField label={t('purchasing.receiptNumber')} required><TextField accessibilityLabel={t('purchasing.receiptNumber')} placeholder={t('purchasing.receiptNumber')} value={receiptNumber} onChangeText={setReceiptNumber} /></FormField>
+                <FormField label={t('purchasing.supplierInvoice')}><TextField accessibilityLabel={t('purchasing.supplierInvoice')} placeholder={t('purchasing.supplierInvoice')} value={supplierInvoice} onChangeText={setSupplierInvoice} /></FormField>
                 {orderLines.map((line) => {
                   const draft = receiptDrafts[line.id] ?? { quantity: '', unitCost: '', lotNumber: '', expiryDate: '' };
                   const remaining = Number(line.ordered_quantity) - Number(line.received_quantity);
                   return (
-                    <View key={line.id} style={styles.receiveBlock}>
+                    <Surface key={line.id} tone="inset" style={styles.receiveBlock}>
                       <Text style={styles.name}>{line.product_name}</Text>
                       <View style={styles.quantitySummary}>
-                        <Text style={styles.meta}>{t('production.purchasingView.ordered', { quantity: line.ordered_quantity })}</Text>
-                        <Text style={styles.meta}>{t('production.purchasingView.received', { quantity: line.received_quantity })}</Text>
-                        <Text style={styles.meta}>{t('production.purchasingView.remaining', { quantity: remaining })}</Text>
+                        <StatusBadge label={t('production.purchasingView.ordered', { quantity: line.ordered_quantity })} tone="neutral" />
+                        <StatusBadge label={t('production.purchasingView.received', { quantity: line.received_quantity })} tone="info" />
+                        <StatusBadge label={t('production.purchasingView.remaining', { quantity: remaining })} tone={remaining > 0 ? 'warning' : 'success'} />
                       </View>
-                      <TextInput keyboardType="decimal-pad" style={styles.input} placeholder={t('purchasing.quantityReceived')} value={draft.quantity} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, quantity: value } }))} />
-                      <TextInput style={styles.input} placeholder={t('catalog.lotNumber')} value={draft.lotNumber} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, lotNumber: value } }))} />
-                      <TextInput style={styles.input} placeholder={t('catalog.expiryDate')} value={draft.expiryDate} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, expiryDate: value } }))} />
-                      <TextInput keyboardType="decimal-pad" style={styles.input} placeholder={t('purchasing.unitCost')} value={draft.unitCost} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, unitCost: value } }))} />
-                    </View>
+                      <FormField label={t('purchasing.quantityReceived')} required><TextField accessibilityLabel={`${line.product_name} ${t('purchasing.quantityReceived')}`} keyboardType="decimal-pad" placeholder={t('purchasing.quantityReceived')} value={draft.quantity} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, quantity: value } }))} /></FormField>
+                      <FormField label={t('catalog.lotNumber')} required><TextField accessibilityLabel={`${line.product_name} ${t('catalog.lotNumber')}`} placeholder={t('catalog.lotNumber')} value={draft.lotNumber} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, lotNumber: value } }))} /></FormField>
+                      <FormField label={t('catalog.expiryDate')} required><TextField accessibilityLabel={`${line.product_name} ${t('catalog.expiryDate')}`} placeholder={t('catalog.expiryDate')} value={draft.expiryDate} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, expiryDate: value } }))} /></FormField>
+                      <FormField label={t('purchasing.unitCost')}><TextField accessibilityLabel={`${line.product_name} ${t('purchasing.unitCost')}`} keyboardType="decimal-pad" placeholder={t('purchasing.unitCost')} value={draft.unitCost} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, unitCost: value } }))} /></FormField>
+                    </Surface>
                   );
                 })}
-                <Pressable disabled={saving || !receiptNumber.trim()} onPress={() => void submitReceipt()} style={[styles.primaryButton, saving && styles.disabled]}>
-                  <Text style={styles.primaryButtonText}>{t('purchasing.confirmReceipt')}</Text>
-                </Pressable>
-              </View>
+                <Button disabled={!receiptNumber.trim()} label={t('purchasing.confirmReceipt')} loading={saving} onPress={() => void submitReceipt()} style={styles.primaryButton} />
+              </Surface>
             ) : null}
-            {!selectedOrderId && canReceive && mutationsAuthorized ? <Text style={styles.meta}>{t('production.purchasingView.selectOrder')}</Text> : null}
+            {!selectedOrderId && canReceive && mutationsAuthorized ? <Alert tone="info" title={t('production.purchasingView.selectOrder')} /> : null}
           </>
         ) : null}
 
         {tab === 'receipts' ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t('purchasing.receiptHistory')}</Text>
-            {receipts.length === 0 ? <Text style={styles.meta}>{t('purchasing.noReceipts')}</Text> : receipts.map((item) => (
+          <Surface tone="default" style={styles.card}>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>{t('purchasing.receiptHistory')}</Text>
+            {receipts.length === 0 ? <Alert tone="info" title={t('purchasing.noReceipts')} /> : receipts.map((item) => (
               <View key={item.id} style={styles.row}>
-                <View><Text style={styles.name}>{item.receipt_number}</Text><Text style={styles.meta}>{formatReceivedDate(item.received_at)} · {item.supplier_invoice_number ?? '—'}</Text></View>
+                <View style={styles.grow}><Text style={styles.name}>{item.receipt_number}</Text><SupportingText style={styles.meta}>{formatReceivedDate(item.received_at)} · {item.supplier_invoice_number ?? '—'}</SupportingText></View>
+                <StatusBadge label={t('purchasing.tabs.receipts')} tone="success" />
               </View>
             ))}
-          </View>
+          </Surface>
         ) : null}
       </ScrollView>
     </SafeAreaView>
@@ -428,44 +452,37 @@ export default function PurchasingScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
-  container: { padding: spacing.xl, gap: spacing.lg, maxWidth: 1200, width: '100%', alignSelf: 'center' },
+  safeArea: { flex: 1, backgroundColor: surface.canvas },
+  container: { padding: spacing.xl, gap: spacing.lg, maxWidth: 1280, width: '100%', alignSelf: 'center' },
   compactContainer: { padding: spacing.md },
-  headerRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, alignItems: 'center' },
-  grow: { flex: 1 },
-  growText: { flex: 1, color: '#101828', fontWeight: '600' },
-  title: { fontSize: 28, fontWeight: '800', color: colors.primary },
-  subtitle: { color: colors.muted, marginTop: spacing.xs },
-  card: { backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.md },
-  sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.primary },
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted },
-  meta: { color: colors.muted, fontSize: 13 },
-  authorityNote: { color: colors.muted, fontSize: 12, lineHeight: 18 },
-  offlineNote: { color: colors.warning, fontSize: 13, fontWeight: '700' },
-  error: { color: colors.danger, fontWeight: '700' },
-  input: { minHeight: touchTarget, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.md, color: colors.text },
-  smallInput: { minWidth: 120, minHeight: touchTarget, flexGrow: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.sm },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { minHeight: touchTarget, justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radii.pill, paddingHorizontal: spacing.md },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: 13, fontWeight: '600', color: '#344054' },
-  chipTextSelected: { color: '#FFF' },
-  row: { minHeight: touchTarget, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: '#EAECF0' },
+  contextSurface: { gap: spacing.md },
+  grow: { flex: 1, minWidth: 0 },
+  growText: { flex: 1, minWidth: 0, color: foreground.primary, ...typography.body, fontWeight: '700' },
+  card: { gap: spacing.md },
+  sectionTitle: { ...typography.sectionTitle, color: foreground.brand },
+  meta: { ...typography.supporting, color: foreground.secondary },
+  authorityNote: { color: foreground.secondary, ...typography.supporting },
+  error: { color: semantic.danger.foreground, ...typography.body, fontWeight: '700' },
+  smallInput: { minWidth: 120, flexGrow: 1, borderColor: border.default },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chip: { minHeight: touchTarget, maxWidth: '100%', justifyContent: 'center', borderWidth: borderWidths.hairline, borderColor: border.default, borderRadius: shape.pill, paddingHorizontal: spacing.md, backgroundColor: surface.default },
+  chipSelected: { backgroundColor: surface.brand, borderColor: surface.brand },
+  chipFocused: { borderWidth: focusRing.width, borderColor: focusRing.color },
+  chipText: { ...typography.body, fontWeight: '700', color: foreground.secondary, flexShrink: 1 },
+  chipTextSelected: { color: foreground.inverse },
+  row: { minHeight: touchTarget, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: borderWidths.hairline, borderBottomColor: border.subtle, borderRadius: shape.sm },
+  rowFocused: { borderWidth: focusRing.width, borderColor: focusRing.color, paddingHorizontal: spacing.sm },
   compactRow: { alignItems: 'flex-start', flexWrap: 'wrap' },
-  table: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, overflow: 'hidden' },
-  tableRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: '#EAECF0' },
-  tableHeader: { minHeight: 40, backgroundColor: '#F9FAFB' },
-  tableHeading: { color: colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  table: { borderWidth: borderWidths.hairline, borderColor: border.default, borderRadius: shape.md, overflow: 'hidden' },
+  tableRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: borderWidths.hairline, borderBottomColor: border.subtle },
+  tableHeader: { minHeight: 40, backgroundColor: surface.inset },
+  tableHeading: { color: foreground.secondary, ...typography.metadata, fontWeight: '800', textTransform: 'uppercase' },
   poColumn: { flex: 1, minWidth: 110 }, supplierColumn: { flex: 2, minWidth: 170 }, dateColumn: { flex: 1, minWidth: 130 }, statusColumn: { flex: 1, minWidth: 150 },
-  lineEditor: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  lineEditor: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm, padding: spacing.md },
   compactEditor: { alignItems: 'stretch' },
   quantitySummary: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  receiveBlock: { gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EAECF0' },
-  name: { fontWeight: '700', color: '#101828' },
-  status: { fontWeight: '700', color: '#344054' },
-  primaryButton: { minHeight: touchTarget, justifyContent: 'center', alignSelf: 'flex-start', backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: spacing.lg },
-  primaryButtonText: { color: '#FFF', fontWeight: '700' },
-  secondaryButton: { minHeight: touchTarget, justifyContent: 'center', borderWidth: 1, borderColor: '#98A2B3', borderRadius: radii.md, paddingHorizontal: spacing.md },
-  secondaryButtonText: { color: '#344054', fontWeight: '700' },
-  disabled: { opacity: 0.45 },
+  receiveBlock: { gap: spacing.md, padding: spacing.md },
+  name: { ...typography.body, fontWeight: '800', color: foreground.primary },
+  primaryButton: { alignSelf: 'flex-start' },
+  disabled: { opacity: disabledOpacity },
 });
