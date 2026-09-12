@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { formatDateOnly } from '@/utils/dateFormatting';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
+import { Alert, Button, TextField } from '@/components/ui/controls';
+import { PageHeader, Surface } from '@/components/ui/layout';
+import { CardTitle, MetadataText, SupportingText } from '@/components/ui/typography';
 import { batchSafetyStatus, isBatchSellable, sortBalancesForFefoDisplay, type BatchSafetyStatus } from '@/domain/inventorySafety';
 import { formatInventoryMovementType } from '@/domain/inventoryMovementPresentation';
 import { LocalStore } from '@/offline/localStore';
@@ -31,10 +34,15 @@ import {
   type InventoryBalanceItem,
   type InventoryMovement,
 } from '@/services/inventory';
-import { breakpoints, colors, radii, spacing, touchTarget } from '@/theme/tokens';
+import { breakpoints, colors, radii, semantic, spacing, touchTarget } from '@/theme/tokens';
 
 const localStore = new LocalStore();
 const FILTER_STATUSES: ('ALL' | BatchSafetyStatus)[] = ['ALL', 'ACTIVE', 'QUARANTINED', 'RECALLED', 'EXPIRED', 'DEPLETED', 'DISPOSED'];
+
+function SelectableChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const [focused, setFocused] = useState(false);
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected }} onBlur={() => setFocused(false)} onFocus={() => setFocused(true)} onPress={onPress} style={[styles.chip, selected && styles.chipSelected, focused && styles.chipFocused]}><Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></Pressable>;
+}
 
 export default function InventoryScreen() {
   const { t, i18n } = useTranslation();
@@ -239,19 +247,11 @@ export default function InventoryScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={[styles.container, width < breakpoints.compact && styles.compactContainer]}>
-        <View style={styles.headerRow}>
-          <View style={styles.grow}>
-            <Text accessibilityRole="header" style={styles.title}>
-              {t('inventory.title')}
-            </Text>
-            <Text style={styles.subtitle}>{t('inventory.subtitle')}</Text>
-          </View>
-          <Link href="/batches" asChild>
-            <Pressable style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>{t('catalog.manageBatches')}</Text>
-            </Pressable>
-          </Link>
-        </View>
+        <PageHeader
+          title={t('inventory.title')}
+          subtitle={t('inventory.subtitle')}
+          action={<Link href="/batches" asChild><Button label={t('catalog.manageBatches')} variant="secondary" /></Link>}
+        />
         <ReadModelStatus
           hasData={syncedAt !== null}
           loading={loading}
@@ -259,40 +259,33 @@ export default function InventoryScreen() {
           syncedAt={syncedAt}
           usingCachedData={usingCachedData}
         />
-        <Text style={styles.authorityNote}>{t('production.inventoryView.ledgerAuthority')}</Text>
+        <SupportingText style={styles.authorityNote}>{t('production.inventoryView.ledgerAuthority')}</SupportingText>
         {!isOnline ? (
-          <Text accessibilityRole="alert" style={styles.offlineNote}>
-            {t('production.inventoryView.offlineReadOnly')}
-          </Text>
+          <Alert tone="warning" title={t('production.inventoryView.offlineReadOnly')} />
         ) : null}
         {error ? (
-          <Text accessibilityRole="alert" style={styles.error}>
-            {error}
-          </Text>
+          <Alert tone="danger" title={error} />
         ) : null}
         <Text style={styles.sectionLabel}>{t('organization.branch')}</Text>
         <View style={styles.chips}>
           {branches.map((item) => (
-            <Pressable
+            <SelectableChip
               key={item.id}
+              label={item.name}
               onPress={() => setBranchId(item.id)}
-              style={[styles.chip, item.id === branchId && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, item.id === branchId && styles.chipTextSelected]}>{item.name}</Text>
-            </Pressable>
+              selected={item.id === branchId}
+            />
           ))}
         </View>
 
-        <View style={styles.card}>
+        <Surface tone="raised" style={styles.card}>
           <View style={styles.headerRow}>
-            <Text style={styles.sectionTitle}>{t('inventory.balances')}</Text>
+            <CardTitle>{t('inventory.balances')}</CardTitle>
             {canCount && mutationsAuthorized ? (
-              <Pressable onPress={() => setCountMode((value) => !value)} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>{countMode ? t('common.cancel') : t('inventory.stockCount')}</Text>
-              </Pressable>
+              <Button label={countMode ? t('common.cancel') : t('inventory.stockCount')} onPress={() => setCountMode((value) => !value)} variant="secondary" />
             ) : null}
           </View>
-          <TextInput
+          <TextField
             accessibilityLabel={t('production.inventoryView.search')}
             onChangeText={setQuery}
             placeholder={t('production.inventoryView.search')}
@@ -302,21 +295,18 @@ export default function InventoryScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.filterRow}>
               {FILTER_STATUSES.map((item) => (
-                <Pressable
+                <SelectableChip
                   key={item}
+                  label={item === 'ALL' ? t('production.inventoryView.allStatuses') : t(`production.batchStatus.${item.toLowerCase()}`)}
                   onPress={() => setStatusFilter(item)}
-                  style={[styles.chip, item === statusFilter && styles.chipSelected]}
-                >
-                  <Text style={[styles.chipText, item === statusFilter && styles.chipTextSelected]}>
-                    {item === 'ALL' ? t('production.inventoryView.allStatuses') : t(`production.batchStatus.${item.toLowerCase()}`)}
-                  </Text>
-                </Pressable>
+                  selected={item === statusFilter}
+                />
               ))}
             </View>
           </ScrollView>
-          {!loading && balances.length === 0 ? <Text style={styles.meta}>{t('inventory.noStock')}</Text> : null}
+          {!loading && balances.length === 0 ? <SupportingText>{t('inventory.noStock')}</SupportingText> : null}
           {balances.length > 0 && visibleBalances.length === 0 ? (
-            <Text style={styles.meta}>{t('production.inventoryView.noFilteredStock')}</Text>
+            <SupportingText>{t('production.inventoryView.noFilteredStock')}</SupportingText>
           ) : null}
           {desktopTable && visibleBalances.length > 0 ? (
             <InventoryTable balances={visibleBalances} countMode={countMode} counted={counted} onCounted={setCounted} />
@@ -337,59 +327,45 @@ export default function InventoryScreen() {
             ))
           )}
           {countMode ? (
-            <Pressable disabled={saving} onPress={() => void submitStockCount()} style={[styles.primaryButton, saving && styles.disabled]}>
-              <Text style={styles.primaryButtonText}>{saving ? t('common.loading') : t('inventory.reconcile')}</Text>
-            </Pressable>
+            <Button disabled={saving} label={saving ? t('common.loading') : t('inventory.reconcile')} loading={saving} onPress={() => void submitStockCount()} />
           ) : null}
-        </View>
+        </Surface>
 
         {canAdjust && mutationsAuthorized && branchId && batches.length > 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t('inventory.adjustment')}</Text>
+          <Surface tone="default" style={styles.card}>
+            <CardTitle>{t('inventory.adjustment')}</CardTitle>
             <Text style={styles.sectionLabel}>{t('catalog.selectProduct')}</Text>
             <View style={styles.chips}>
               {batches.slice(0, 60).map((item) => (
-                <Pressable
+                <SelectableChip
                   key={item.id}
+                  label={`${productMap.get(item.product_id) ?? item.product_id.slice(0, 8)} · ${item.lot_number}`}
                   onPress={() => setSelectedBatchId(item.id)}
-                  style={[styles.chip, item.id === selectedBatchId && styles.chipSelected]}
-                >
-                  <Text style={[styles.chipText, item.id === selectedBatchId && styles.chipTextSelected]}>
-                    {productMap.get(item.product_id) ?? item.product_id.slice(0, 8)} · {item.lot_number}
-                  </Text>
-                </Pressable>
+                  selected={item.id === selectedBatchId}
+                />
               ))}
             </View>
             <View style={styles.chips}>
-              <Pressable onPress={() => setDirection('IN')} style={[styles.chip, direction === 'IN' && styles.chipSelected]}>
-                <Text style={[styles.chipText, direction === 'IN' && styles.chipTextSelected]}>{t('inventory.increase')}</Text>
-              </Pressable>
-              <Pressable onPress={() => setDirection('OUT')} style={[styles.chip, direction === 'OUT' && styles.chipSelected]}>
-                <Text style={[styles.chipText, direction === 'OUT' && styles.chipTextSelected]}>{t('inventory.decrease')}</Text>
-              </Pressable>
+              <SelectableChip label={t('inventory.increase')} onPress={() => setDirection('IN')} selected={direction === 'IN'} />
+              <SelectableChip label={t('inventory.decrease')} onPress={() => setDirection('OUT')} selected={direction === 'OUT'} />
             </View>
-            <TextInput
+            <TextField
+              accessibilityLabel={t('inventory.quantity')}
               keyboardType="decimal-pad"
               onChangeText={setQuantity}
               placeholder={t('inventory.quantity')}
               style={styles.input}
               value={quantity}
             />
-            <TextInput onChangeText={setReason} placeholder={t('inventory.reason')} style={styles.input} value={reason} />
-            <Pressable
-              disabled={saving || !quantity.trim()}
-              onPress={() => void submitAdjustment()}
-              style={[styles.primaryButton, (saving || !quantity.trim()) && styles.disabled]}
-            >
-              <Text style={styles.primaryButtonText}>{saving ? t('common.loading') : t('inventory.postAdjustment')}</Text>
-            </Pressable>
-          </View>
+            <TextField accessibilityLabel={t('inventory.reason')} onChangeText={setReason} placeholder={t('inventory.reason')} style={styles.input} value={reason} />
+            <Button disabled={saving || !quantity.trim()} label={saving ? t('common.loading') : t('inventory.postAdjustment')} loading={saving} onPress={() => void submitAdjustment()} />
+          </Surface>
         ) : null}
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('inventory.recentMovements')}</Text>
-          <Text style={styles.authorityNote}>{t('production.inventoryView.ledgerAuthority')}</Text>
-          {movements.length === 0 ? <Text style={styles.meta}>{t('inventory.noMovements')}</Text> : null}
+        <Surface tone="default" style={styles.card}>
+          <CardTitle>{t('inventory.recentMovements')}</CardTitle>
+          <SupportingText style={styles.authorityNote}>{t('production.inventoryView.ledgerAuthority')}</SupportingText>
+          {movements.length === 0 ? <SupportingText>{t('inventory.noMovements')}</SupportingText> : null}
           {movements.map((movement) => (
             <View key={movement.id} style={styles.movementRow}>
               <Text style={styles.movementType}>{formatInventoryMovementType(movement.movement_type, t)}</Text>
@@ -397,15 +373,15 @@ export default function InventoryScreen() {
                 {movement.quantity_delta > 0 ? '+' : ''}
                 {movement.quantity_delta}
               </Text>
-              <Text style={styles.meta}>
+              <MetadataText style={styles.movementMeta}>
                 {new Intl.DateTimeFormat(i18n.language, {
                   dateStyle: 'medium',
                   timeStyle: 'short',
                 }).format(new Date(movement.occurred_at))}
-              </Text>
+              </MetadataText>
             </View>
           ))}
-        </View>
+        </Surface>
       </ScrollView>
     </SafeAreaView>
   );
@@ -482,7 +458,7 @@ function InventoryCard({
   const safety = batchSafetyStatus(balance.batch_status, balance.expiry_date);
   const sellable = isBatchSellable(balance.batch_status, balance.expiry_date);
   return (
-    <View accessibilityRole="summary" style={styles.stockCard}>
+    <View accessibilityRole="summary" style={[styles.stockCard, !sellable && styles.stockCardBlocked]}>
       <View style={styles.headerRow}>
         <Text style={styles.productName}>{balance.product_name}</Text>
         <BatchStatusBadge status={safety} />
@@ -553,14 +529,7 @@ const styles = StyleSheet.create({
   authorityNote: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   offlineNote: { color: colors.warning, fontWeight: '700', fontSize: 13 },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
     gap: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 1,
   },
   stockCard: {
     borderWidth: 1,
@@ -584,9 +553,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#EAECF0',
+    borderBottomColor: colors.border,
   },
-  tableHeader: { minHeight: 42, backgroundColor: '#F9FAFB' },
+  tableHeader: { minHeight: 42, backgroundColor: colors.background },
   tableHeading: {
     color: colors.muted,
     fontSize: 11,
@@ -604,7 +573,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#EAECF0',
+    borderBottomColor: colors.border,
     paddingVertical: spacing.sm,
   },
   movementType: {
@@ -614,6 +583,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
   },
+  stockCardBlocked: { backgroundColor: semantic.danger.background, borderColor: semantic.danger.border },
+  movementMeta: { flexShrink: 1, textAlign: 'right' },
   quantity: { fontSize: 15, fontWeight: '800', color: colors.success },
   unavailable: { color: colors.danger, fontSize: 12 },
   negative: { color: colors.danger },
@@ -650,12 +621,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.pill,
     paddingHorizontal: spacing.md,
+    maxWidth: '100%',
   },
   chipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  chipText: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  chipFocused: { borderWidth: 2, borderColor: colors.accent },
+  chipText: { color: colors.text, fontSize: 13, fontWeight: '700', flexShrink: 1 },
   chipTextSelected: { color: colors.surface },
   primaryButton: {
     minHeight: touchTarget,
