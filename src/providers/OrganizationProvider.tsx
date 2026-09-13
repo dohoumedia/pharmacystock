@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useAuth } from './AuthProvider';
 import { useConnectivity } from './ConnectivityProvider';
 import { LocalStore } from '@/offline/localStore';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import {
   cacheOrganizationContext,
   cacheOrganizations,
@@ -105,14 +106,14 @@ export function OrganizationProvider({ children }: PropsWithChildren) {
         setPermissions([]);
         setContextSyncedAt(cachedOrganizations?.syncedAt ?? null);
         setUsingCachedData(!isOnline);
-        if (!isOnline) setError('OFFLINE_CACHE_EMPTY');
+        if (!isOnline) setError(errorPresentationKey('OFFLINE_CACHE_EMPTY'));
         return;
       }
 
       const cachedContext = getCachedOrganizationContext(localStore, user.id, selectedOrganizationId);
       if (!isOnline) {
         if (!cachedContext) {
-          setError('OFFLINE_CACHE_EMPTY');
+          setError(errorPresentationKey('OFFLINE_CACHE_EMPTY'));
           applyContext({ branches: [], membership: null, role: null, permissions: [] }, cachedOrganizations?.syncedAt ?? null, true);
           return;
         }
@@ -134,7 +135,7 @@ export function OrganizationProvider({ children }: PropsWithChildren) {
       if (fallbackOrganizations) setOrganizations(fallbackOrganizations.data);
       if (selectedOrganizationId) setOrganizationIdState(selectedOrganizationId);
       if (fallbackContext) applyContext(fallbackContext.data, fallbackContext.syncedAt, true);
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(errorPresentationKey(cause));
     } finally {
       setLoading(false);
     }

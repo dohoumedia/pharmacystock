@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, useWindowDimensions, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatDateOnly, formatInstantDate } from '@/utils/dateFormatting';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { Alert, Button, FormField, PageHeader, Stack, StatusBadge, Surface, SupportingText, TextField } from '@/components/ui';
 import { LocalStore } from '@/offline/localStore';
@@ -192,7 +193,7 @@ export default function PurchasingScreen() {
       }
       setReceiptDrafts(next);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     }
   };
 
@@ -221,7 +222,7 @@ export default function PurchasingScreen() {
       setSupplierEmail('');
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }
@@ -245,7 +246,7 @@ export default function PurchasingScreen() {
       setDraftLines({});
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }
@@ -280,7 +281,7 @@ export default function PurchasingScreen() {
       setReceiptDrafts({});
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }
@@ -350,7 +351,7 @@ export default function PurchasingScreen() {
               {suppliers.length === 0 ? <SupportingText style={styles.meta}>{t('purchasing.noSuppliers')}</SupportingText> : suppliers.map((item) => (
                 <View key={item.id} style={styles.row}>
                   <View style={styles.grow}><Text style={styles.name}>{item.name}</Text><SupportingText style={styles.meta}>{item.phone ?? item.email ?? '—'}</SupportingText></View>
-                  <StatusBadge label={t('production.purchasingView.statusLabel', { status: item.status })} tone={item.status === 'active' ? 'success' : 'neutral'} />
+                  <StatusBadge label={t(`production.purchasingView.supplierStatus.${item.status}`, { defaultValue: t('production.purchasingView.supplierStatus.unavailable') })} tone={item.status === 'active' ? 'success' : 'neutral'} />
                 </View>
               ))}
             </Surface>

@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatDateOnly } from '@/utils/dateFormatting';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { Alert, Button, TextField } from '@/components/ui/controls';
@@ -158,7 +159,7 @@ export default function BatchesScreen() {
       setNotes('');
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }

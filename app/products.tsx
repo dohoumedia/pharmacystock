@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useOrganization } from '@/providers/OrganizationProvider';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import {
   archiveProduct,
   createProduct,
@@ -55,7 +56,7 @@ export default function ProductsScreen() {
       setCategoryId((current) => current && nextCategories.some((item) => item.id === current) ? current : null);
       setManufacturerId((current) => current && nextManufacturers.some((item) => item.id === current) ? current : null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setLoading(false);
     }
@@ -96,8 +97,7 @@ export default function ProductsScreen() {
       setManufacturerId(null);
       await refresh();
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'UNKNOWN_ERROR';
-      setError(message === 'BARCODE_ALREADY_EXISTS' ? t('catalog.barcodeExists') : message);
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }
@@ -109,7 +109,7 @@ export default function ProductsScreen() {
       await archiveProduct(productId);
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     }
   };
 

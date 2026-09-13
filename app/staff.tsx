@@ -4,6 +4,7 @@ import { Link } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/providers/AuthProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import {
   loadAssignableRoles,
   loadStaff,
@@ -41,7 +42,7 @@ export default function StaffScreen() {
       setStaff(nextStaff);
       setRoles(nextRoles);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setLoading(false);
     }
@@ -65,7 +66,7 @@ export default function StaffScreen() {
       });
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSavingId(null);
     }
@@ -82,7 +83,7 @@ export default function StaffScreen() {
       });
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSavingId(null);
     }
@@ -99,7 +100,7 @@ export default function StaffScreen() {
       await replaceStaffBranches(member.membership.id, member.branchIds, next);
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSavingId(null);
     }

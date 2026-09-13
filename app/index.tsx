@@ -10,6 +10,7 @@ import { LocalStore } from '@/offline/localStore';
 import { getCachedInventoryReadModel, getCachedOrganizationSettings } from '@/offline/readModels';
 import { getCachedReports } from '@/offline/reportReadModel';
 import { useAuth } from '@/providers/AuthProvider';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
 import { loadDailySales, loadOrganizationSettings, type DailySalesReport, type OrganizationSettings } from '@/services/coreCompletion';
@@ -29,8 +30,8 @@ export default function HomeScreen() {
   const [authBusy, setAuthBusy] = useState(false);
   const actionState = signInActionState(email, password, authBusy);
   const switchLanguage = async () => { await i18n.changeLanguage(i18n.language === 'fr' ? 'en' : 'fr'); };
-  const submitSignIn = async () => { setAuthBusy(true); setAuthError(null); try { await signIn(email, password); setPassword(''); } catch (cause) { setAuthError(cause instanceof Error ? cause.message : 'AUTH_ERROR'); } finally { setAuthBusy(false); } };
-  const submitSignOut = async () => { setAuthBusy(true); setAuthError(null); try { await signOut(); } catch (cause) { setAuthError(cause instanceof Error ? cause.message : 'AUTH_ERROR'); } finally { setAuthBusy(false); } };
+  const submitSignIn = async () => { setAuthBusy(true); setAuthError(null); try { await signIn(email, password); setPassword(''); } catch (cause) { setAuthError(t(errorPresentationKey(cause))); } finally { setAuthBusy(false); } };
+  const submitSignOut = async () => { setAuthBusy(true); setAuthError(null); try { await signOut(); } catch (cause) { setAuthError(t(errorPresentationKey(cause))); } finally { setAuthBusy(false); } };
 
   return <SafeAreaView style={styles.safeArea}><View style={styles.screen}>
     {!user ? <><AuthScreen busy={actionState.loading} disabled={actionState.disabled} email={email} error={authError} loading={authLoading} onEmailChange={setEmail} onPasswordChange={setPassword} onSubmit={() => void submitSignIn()} password={password} /><Button label={i18n.language === 'fr' ? t('common.english') : t('common.french')} onPress={() => void switchLanguage()} style={styles.languageButton} variant="secondary" /></> : <Dashboard authError={authError} languageLabel={i18n.language === 'fr' ? t('common.english') : t('common.french')} onSignOut={() => void submitSignOut()} onSwitchLanguage={() => void switchLanguage()} signOutBusy={authBusy} />}
@@ -75,7 +76,7 @@ function Dashboard({ onSignOut, onSwitchLanguage, languageLabel, signOutBusy, au
   const stockLevel = stockRiskLevel(stock); const expiryLevel = expiryRiskLevel(expiry.map((item) => item.days_remaining)); const transferLevel = transferRiskLevel(transferAttention.length);
   return <ScrollView contentContainerStyle={styles.dashboardScroll}><Screen style={styles.dashboardScreen}>
     <PageHeader title={t('dashboard.title')} subtitle={branch ? t('dashboard.subtitle', { branch: branch.name }) : t('dashboard.noContext')} action={<Inline gap={spacing.sm} wrap><Button label={languageLabel} onPress={onSwitchLanguage} variant="secondary" />{organization && branch ? <Button disabled={!isOnline || loading} label={t('dashboard.refresh')} loading={loading} onPress={() => void refresh()} variant="secondary" /> : null}</Inline>} />
-    {organizationLoading ? <ReadModelStatus label={t('common.loading')} tone="info" /> : null}{organizationError ? <Alert accessibilityLabel={organizationError} tone="danger" title={t('dashboard.title')}>{organizationError}</Alert> : null}
+    {organizationLoading ? <ReadModelStatus label={t('common.loading')} tone="info" /> : null}{organizationError ? <Alert accessibilityLabel={t(organizationError)} tone="danger" title={t('dashboard.title')}>{t(organizationError)}</Alert> : null}
     {organizations.length > 1 ? <ContextSelector label={t('organization.title')} items={organizations.map((item) => ({ id: item.id, label: item.name }))} selectedId={organization?.id} onSelect={setOrganizationId} /> : null}
     {organization ? <ContextSelector label={t('organization.branch')} items={branches.map((item) => ({ id: item.id, label: item.name }))} selectedId={branch?.id} onSelect={setBranchId} footer={`${t('organization.role')}: ${role ? (i18n.language === 'fr' ? role.name_fr : role.name_en) : t('organization.noRole')} · ${t('organization.permissions')}: ${permissions.length}`} /> : null}
     {error ? <Alert tone="warning" title={t('dashboard.refreshFailed')} /> : null}{usingCachedData ? <ReadModelStatus label={`${t('dashboard.cached')}${syncedAt ? ` · ${t('dashboard.lastUpdated', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(syncedAt)) })}` : ''}`} tone="warning" /> : null}
