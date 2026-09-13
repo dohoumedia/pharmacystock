@@ -1,5 +1,14 @@
 {
   "production": {
+    "error": {
+      "generic": "Something went wrong. Please try again.",
+      "duplicateBarcode": "A product with this barcode already exists.",
+      "duplicateValue": "A record with one of these values already exists.",
+      "permissionDenied": "You do not have permission to complete this action.",
+      "validation": "Check the information entered and try again.",
+      "authentication": "Your session needs to be refreshed. Please sign in again.",
+      "temporary": "The pharmacy server is temporarily unavailable. Please try again."
+    },
     "authorizationReadOnly": "Changes require an online server check with freshly synchronized permissions.",
     "connectivity": {
       "checking": "Checking connection…",
@@ -102,10 +111,12 @@
       "requiredReceiptLines": "Enter at least one received quantity with its lot number and expiry date.",
       "requiredOrderLines": "Add at least one product with a valid quantity.",
       "statusLabel": "Status: {{status}}",
+      "supplierStatus": { "active": "Active", "archived": "Archived", "unavailable": "Status unavailable" },
       "ordered": "Ordered: {{quantity}}",
       "received": "Previously received: {{quantity}}",
       "remaining": "Remaining: {{quantity}}"
     },
+    "expiryAlertStatus": { "open": "Open", "acknowledged": "Acknowledged", "resolved": "Resolved", "unavailable": "Status unavailable" },
     "batchStatus": {
       "active": "Active",
       "quarantined": "Quarantined",

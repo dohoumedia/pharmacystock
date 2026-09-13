@@ -1,5 +1,14 @@
 {
   "production": {
+    "error": {
+      "generic": "Une erreur s’est produite. Veuillez réessayer.",
+      "duplicateBarcode": "Un produit avec ce code-barres existe déjà.",
+      "duplicateValue": "Un enregistrement avec l’une de ces valeurs existe déjà.",
+      "permissionDenied": "Vous n’avez pas l’autorisation d’effectuer cette action.",
+      "validation": "Vérifiez les informations saisies puis réessayez.",
+      "authentication": "Votre session doit être actualisée. Veuillez vous reconnecter.",
+      "temporary": "Le serveur de la pharmacie est temporairement indisponible. Veuillez réessayer."
+    },
     "authorizationReadOnly": "Les modifications nécessitent un contrôle du serveur en ligne avec des autorisations récemment synchronisées.",
     "connectivity": {
       "checking": "Vérification de la connexion…",
@@ -102,10 +111,12 @@
       "requiredReceiptLines": "Saisissez au moins une quantité reçue avec son numéro de lot et sa date de péremption.",
       "requiredOrderLines": "Ajoutez au moins un produit avec une quantité valide.",
       "statusLabel": "Statut : {{status}}",
+      "supplierStatus": { "active": "Actif", "archived": "Archivé", "unavailable": "Statut indisponible" },
       "ordered": "Commandé : {{quantity}}",
       "received": "Déjà reçu : {{quantity}}",
       "remaining": "Restant : {{quantity}}"
     },
+    "expiryAlertStatus": { "open": "Ouverte", "acknowledged": "Prise en compte", "resolved": "Résolue", "unavailable": "Statut indisponible" },
     "batchStatus": {
       "active": "Actif",
       "quarantined": "En quarantaine",

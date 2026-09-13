@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatDateOnly } from '@/utils/dateFormatting';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { Alert, Button, TextField } from '@/components/ui/controls';
@@ -198,8 +199,8 @@ export default function InventoryScreen() {
       setReason('');
       await refreshAfterWrite();
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'UNKNOWN_ERROR';
-      setError(message.includes('INSUFFICIENT_STOCK') ? t('inventory.insufficientStock') : message);
+      const message = cause instanceof Error ? cause.message : '';
+      setError(message.includes('INSUFFICIENT_STOCK') ? t('inventory.insufficientStock') : t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }
@@ -229,7 +230,7 @@ export default function InventoryScreen() {
       setCountMode(false);
       await refreshAfterWrite();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }

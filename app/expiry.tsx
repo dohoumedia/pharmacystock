@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatDateOnly } from '@/utils/dateFormatting';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { LocalStore } from '@/offline/localStore';
@@ -78,7 +79,7 @@ export default function ExpiryScreen() {
       if (policy) setThresholds(policy.thresholds_days.join(', '));
       setSelectedBatchId((current) => current && nextRisk.some((item) => item.batch_id === current) ? current : nextRisk[0]?.batch_id ?? null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setLoading(false);
     }
@@ -106,7 +107,7 @@ export default function ExpiryScreen() {
       setReason('');
       setConfirmDispose(false);
       await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR'); }
+    } catch (cause) { setError(t(errorPresentationKey(cause))); }
     finally { setSaving(false); }
   };
 
@@ -120,7 +121,7 @@ export default function ExpiryScreen() {
       await returnBatchToSupplier(selected.batch_id, onHand, quantity, reason);
       setReturnQuantity(''); setReason('');
       await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR'); }
+    } catch (cause) { setError(t(errorPresentationKey(cause))); }
     finally { setSaving(false); }
   };
 
@@ -132,7 +133,7 @@ export default function ExpiryScreen() {
       await disposeBatch(selected.batch_id, Number(selected.on_hand_quantity ?? 0), reason);
       setConfirmDispose(false); setReason('');
       await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR'); }
+    } catch (cause) { setError(t(errorPresentationKey(cause))); }
     finally { setSaving(false); }
   };
 
@@ -144,7 +145,7 @@ export default function ExpiryScreen() {
       const saved = await saveExpiryPolicy(organization.id, parsed);
       setThresholds(saved.thresholds_days.join(', '));
       await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR'); }
+    } catch (cause) { setError(t(errorPresentationKey(cause))); }
     finally { setSaving(false); }
   };
 
@@ -152,7 +153,7 @@ export default function ExpiryScreen() {
     if (!mutationAllowed) return;
     setSaving(true); setError(null);
     try { await acknowledgeExpiryAlert(alertId); await refresh(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR'); }
+    catch (cause) { setError(t(errorPresentationKey(cause))); }
     finally { setSaving(false); }
   };
 
@@ -217,7 +218,7 @@ export default function ExpiryScreen() {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>{t('expiry.alerts')}</Text>
-          {alerts.length === 0 ? <Text style={styles.meta}>{t('expiry.noAlerts')}</Text> : alerts.map((alert) => { const item=byBatch.get(alert.batch_id); return <View key={alert.id} style={styles.alertRow}><View style={styles.grow}><Text style={styles.name}>{item?.product_name ?? alert.batch_id.slice(0,8)}</Text><Text style={styles.meta}>{alert.alert_type==='EXPIRED'?t('expiry.expired'):t('expiry.warning',{days:alert.threshold_days})} · {alert.status}</Text></View>{canManage&&alert.status==='OPEN'?<Pressable disabled={saving||!mutationAllowed} onPress={() => void acknowledge(alert.id)} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.acknowledge')}</Text></Pressable>:null}</View>; })}
+          {alerts.length === 0 ? <Text style={styles.meta}>{t('expiry.noAlerts')}</Text> : alerts.map((alert) => { const item=byBatch.get(alert.batch_id); const alertStatus = t(`production.expiryAlertStatus.${alert.status.toLowerCase()}`, { defaultValue: t('production.expiryAlertStatus.unavailable') }); return <View key={alert.id} style={styles.alertRow}><View style={styles.grow}><Text style={styles.name}>{item?.product_name ?? alert.batch_id.slice(0,8)}</Text><Text style={styles.meta}>{alert.alert_type==='EXPIRED'?t('expiry.expired'):t('expiry.warning',{days:alert.threshold_days})} · {alertStatus}</Text></View>{canManage&&alert.status==='OPEN'?<Pressable disabled={saving||!mutationAllowed} onPress={() => void acknowledge(alert.id)} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.acknowledge')}</Text></Pressable>:null}</View>; })}
         </View>
 
         <View style={styles.card}><Text style={styles.sectionTitle}>{t('expiry.recentActions')}</Text>{actions.length===0?<Text style={styles.meta}>{t('expiry.noActions')}</Text>:actions.map((action)=><View key={action.id} style={styles.alertRow}><Text style={styles.name}>{t(`expiry.action.${action.action_type}`)}</Text><Text style={styles.meta}>{new Date(action.created_at).toLocaleString()}{action.quantity!=null?` · ${action.quantity}`:''}</Text></View>)}</View>

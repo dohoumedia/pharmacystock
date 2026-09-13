@@ -3,6 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useOrganization } from '@/providers/OrganizationProvider';
+import { errorPresentationKey } from '@/utils/errorPresentation';
 import { createBranch } from '@/services/organization';
 
 export default function BranchesScreen() {
@@ -36,7 +37,7 @@ export default function BranchesScreen() {
       setPhone('');
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'UNKNOWN_ERROR');
+      setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
     }
