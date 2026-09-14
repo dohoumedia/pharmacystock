@@ -187,14 +187,18 @@ export async function receivePurchaseOrder(input: {
   receiptNumber: string;
   supplierInvoiceNumber?: string;
   notes?: string;
-  lines: { purchaseOrderLineId: string; quantity: number; unitCost?: number | null; lotNumber: string; expiryDate: string }[];
+  lines: { purchaseOrderLineId: string; quantity: number; unitCost?: number | null; sellingPrice?: number | null; lotNumber: string; expiryDate: string }[];
 }): Promise<string> {
+  if (input.lines.some((line) => line.sellingPrice !== undefined && line.sellingPrice !== null && (!Number.isFinite(line.sellingPrice) || line.sellingPrice <= 0))) {
+    throw new Error('INVALID_BATCH_SELLING_PRICE');
+  }
   const payload = input.lines
     .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0)
     .map((line) => ({
       purchase_order_line_id: line.purchaseOrderLineId,
       quantity: line.quantity,
       unit_cost: line.unitCost ?? null,
+      selling_price: line.sellingPrice ?? null,
       lot_number: line.lotNumber.trim(),
       expiry_date: line.expiryDate.trim(),
     }));

@@ -185,13 +185,22 @@ begin
   end;
 end $$;
 
+-- Capture the target while the owner can read it. After switching JWT claims,
+-- purchase-order RLS correctly hides the row from the cashier; the RPC itself is
+-- security-definer and must still exercise its explicit permission check.
+create temporary table purchasing_cashier_context on commit drop as
+select po.id as order_id, pol.id as line_id
+from public.purchase_orders po
+join public.purchase_order_lines pol on pol.purchase_order_id=po.id
+where po.idempotency_key='test:po:001'
+limit 1;
+
 -- Cashier cannot create or receive purchases even with branch membership.
 select set_config('request.jwt.claim.sub','44000000-0000-0000-0000-000000000002',true);
 do $$
 declare v_order uuid; v_line uuid;
 begin
-  select id into v_order from public.purchase_orders where idempotency_key='test:po:001';
-  select id into v_line from public.purchase_order_lines where purchase_order_id=v_order;
+  select order_id,line_id into v_order,v_line from purchasing_cashier_context;
   begin
     perform public.create_purchase_order(
       'eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','eaaaaaaa-1111-1111-1111-aaaaaaaaaaaa','eaaaaaaa-3333-3333-3333-aaaaaaaaaaaa',
