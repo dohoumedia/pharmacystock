@@ -163,6 +163,29 @@ export async function createBatch(input: Database['public']['Tables']['batches']
   return data;
 }
 
+export async function setMissingBatchSellingPrice(input: {
+  batchId: string;
+  organizationId: string;
+  branchId: string;
+  sellingPrice: number;
+}): Promise<Batch> {
+  if (!Number.isFinite(input.sellingPrice) || input.sellingPrice <= 0) {
+    throw new Error('INVALID_BATCH_SELLING_PRICE');
+  }
+  const { data, error } = await supabase
+    .from('batches')
+    .update({ selling_price: input.sellingPrice })
+    .eq('id', input.batchId)
+    .eq('organization_id', input.organizationId)
+    .eq('branch_id', input.branchId)
+    .is('selling_price', null)
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('BATCH_SELLING_PRICE_ALREADY_SET');
+  return data;
+}
+
 export async function loadBarcodes(productId: string): Promise<Barcode[]> {
   const { data, error } = await supabase.from('product_barcodes').select('*').eq('product_id', productId).order('is_primary', { ascending: false });
   if (error) throw error;

@@ -27,10 +27,11 @@ import {
 } from '@/services/purchasing';
 import { border, borderWidths, breakpoints, disabledOpacity, focusRing, foreground, semantic, shape, spacing, surface, touchTarget, typography } from '@/theme/tokens';
 import { filterPurchaseOrders, purchasingLayout, purchasingMutationAllowed, type PurchaseOrderFilter } from '@/domain/purchasingState';
+import { parsePositiveSellingPrice } from '@/domain/batchPricing';
 
 type Tab = 'orders' | 'suppliers' | 'receipts';
 type DraftLine = { productId: string; quantity: string; unitCost: string };
-type ReceiptDraft = { quantity: string; unitCost: string; lotNumber: string; expiryDate: string };
+type ReceiptDraft = { quantity: string; unitCost: string; sellingPrice: string; lotNumber: string; expiryDate: string };
 
 const localStore = new LocalStore();
 
@@ -187,6 +188,7 @@ export default function PurchasingScreen() {
         next[line.id] = {
           quantity: remaining > 0 ? String(remaining) : '',
           unitCost: line.unit_cost == null ? '' : String(line.unit_cost),
+          sellingPrice: '',
           lotNumber: '',
           expiryDate: '',
         };
@@ -254,18 +256,31 @@ export default function PurchasingScreen() {
 
   const submitReceipt = async () => {
     if (!selectedOrderId || !receiptNumber.trim() || !mutationsAuthorized) return;
-    const lines = orderLines
+    const candidateLines = orderLines
       .map((line) => {
         const draft = receiptDrafts[line.id];
         return {
           purchaseOrderLineId: line.id,
           quantity: Number(draft?.quantity ?? 0),
           unitCost: draft?.unitCost ? Number(draft.unitCost) : null,
+          sellingPrice: parsePositiveSellingPrice(draft?.sellingPrice ?? ''),
           lotNumber: draft?.lotNumber ?? '',
           expiryDate: draft?.expiryDate ?? '',
         };
-      })
-      .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0 && line.lotNumber.trim() && line.expiryDate.trim());
+      });
+    const completeLines = candidateLines.filter((line) => Number.isFinite(line.quantity) && line.quantity > 0 && line.lotNumber.trim() && line.expiryDate.trim());
+    if (completeLines.some((line) => line.sellingPrice === null)) {
+      setError(t('production.purchasingView.sellingPriceRequired'));
+      return;
+    }
+    const lines = completeLines.map((line) => ({
+      purchaseOrderLineId: line.purchaseOrderLineId,
+      quantity: line.quantity,
+      unitCost: line.unitCost,
+      sellingPrice: line.sellingPrice as number,
+      lotNumber: line.lotNumber,
+      expiryDate: line.expiryDate,
+    }));
     if (!lines.length) {
       setError(t('production.purchasingView.requiredReceiptLines'));
       return;
@@ -412,7 +427,7 @@ export default function PurchasingScreen() {
                 <FormField label={t('purchasing.receiptNumber')} required><TextField accessibilityLabel={t('purchasing.receiptNumber')} placeholder={t('purchasing.receiptNumber')} value={receiptNumber} onChangeText={setReceiptNumber} /></FormField>
                 <FormField label={t('purchasing.supplierInvoice')}><TextField accessibilityLabel={t('purchasing.supplierInvoice')} placeholder={t('purchasing.supplierInvoice')} value={supplierInvoice} onChangeText={setSupplierInvoice} /></FormField>
                 {orderLines.map((line) => {
-                  const draft = receiptDrafts[line.id] ?? { quantity: '', unitCost: '', lotNumber: '', expiryDate: '' };
+                  const draft = receiptDrafts[line.id] ?? { quantity: '', unitCost: '', sellingPrice: '', lotNumber: '', expiryDate: '' };
                   const remaining = Number(line.ordered_quantity) - Number(line.received_quantity);
                   return (
                     <Surface key={line.id} tone="inset" style={styles.receiveBlock}>
@@ -426,6 +441,21 @@ export default function PurchasingScreen() {
                       <FormField label={t('catalog.lotNumber')} required><TextField accessibilityLabel={`${line.product_name} ${t('catalog.lotNumber')}`} placeholder={t('catalog.lotNumber')} value={draft.lotNumber} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, lotNumber: value } }))} /></FormField>
                       <FormField label={t('catalog.expiryDate')} required><TextField accessibilityLabel={`${line.product_name} ${t('catalog.expiryDate')}`} placeholder={t('catalog.expiryDate')} value={draft.expiryDate} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, expiryDate: value } }))} /></FormField>
                       <FormField label={t('purchasing.unitCost')}><TextField accessibilityLabel={`${line.product_name} ${t('purchasing.unitCost')}`} keyboardType="decimal-pad" placeholder={t('purchasing.unitCost')} value={draft.unitCost} onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, unitCost: value } }))} /></FormField>
+                      <FormField
+                        label={t('catalog.sellingPrice')}
+                        required
+                        hint={t('production.purchasingView.sellingPriceHint')}
+                        error={draft.sellingPrice.length > 0 && parsePositiveSellingPrice(draft.sellingPrice) === null ? t('production.purchasingView.sellingPriceRequired') : undefined}
+                      >
+                        <TextField
+                          accessibilityLabel={`${line.product_name} ${t('catalog.sellingPrice')}`}
+                          error={draft.sellingPrice.length > 0 && parsePositiveSellingPrice(draft.sellingPrice) === null}
+                          keyboardType="decimal-pad"
+                          placeholder={t('catalog.sellingPrice')}
+                          value={draft.sellingPrice}
+                          onChangeText={(value) => setReceiptDrafts((current) => ({ ...current, [line.id]: { ...draft, sellingPrice: value } }))}
+                        />
+                      </FormField>
                     </Surface>
                   );
                 })}

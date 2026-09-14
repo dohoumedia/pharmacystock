@@ -96,7 +96,14 @@
       "offlineReadOnly": "La création d’un lot nécessite un contrôle d’autorisation du serveur en ligne.",
       "safetyNote": "Les lots périmés, en quarantaine, rappelés, épuisés et mis au rebut ne sont pas vendables. Les règles FEFO du serveur restent la référence.",
       "noFilteredBatches": "Aucun lot ne correspond à ces filtres.",
-      "refreshFailed": "L’actualisation du serveur a échoué. Les derniers lots synchronisés sont affichés si disponibles."
+      "refreshFailed": "L’actualisation du serveur a échoué. Les derniers lots synchronisés sont affichés si disponibles.",
+      "sellingPriceRequired": "Saisissez un prix de vente supérieur à zéro.",
+      "sellingPriceHint": "Requis avant la vente de ce lot. Le prix d’achat reste distinct.",
+      "unpricedTitle": "Lots nécessitant un prix de vente",
+      "unpricedDescription": "Définissez le prix de vente des anciens lots sans modifier le stock, la péremption, le statut ou le prix d’achat.",
+      "setSellingPrice": "Définir le prix de vente",
+      "sellingPriceSaved": "Prix de vente enregistré pour {{lotNumber}}.",
+      "sellingPriceAlreadySet": "Ce lot possède déjà un prix de vente. Actualisez la liste des lots avant de continuer."
     },
     "purchasingView": {
       "offlineReadOnly": "La création de fournisseurs, de bons de commande et de réceptions nécessite un contrôle d’autorisation du serveur en ligne.",
@@ -109,6 +116,8 @@
       "filters": { "open": "Ouvertes", "partial": "Partiellement reçues", "received": "Reçues", "all": "Toutes" },
       "noCachedData": "Aucune donnée d’achat synchronisée n’est disponible pour cette succursale.",
       "requiredReceiptLines": "Saisissez au moins une quantité reçue avec son numéro de lot et sa date de péremption.",
+      "sellingPriceRequired": "Saisissez un prix de vente supérieur à zéro pour chaque ligne reçue.",
+      "sellingPriceHint": "Requis pour la vente et distinct du prix d’achat.",
       "requiredOrderLines": "Ajoutez au moins un produit avec une quantité valide.",
       "statusLabel": "Statut : {{status}}",
       "supplierStatus": { "active": "Actif", "archived": "Archivé", "unavailable": "Statut indisponible" },

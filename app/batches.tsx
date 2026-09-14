@@ -6,10 +6,11 @@ import { formatDateOnly } from '@/utils/dateFormatting';
 import { errorPresentationKey } from '@/utils/errorPresentation';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
-import { Alert, Button, TextField } from '@/components/ui/controls';
+import { Alert, Button, FormField, TextField } from '@/components/ui/controls';
 import { PageHeader, Surface } from '@/components/ui/layout';
 import { CardTitle, SupportingText } from '@/components/ui/typography';
 import { batchSafetyStatus, type BatchSafetyStatus } from '@/domain/inventorySafety';
+import { canRemediateMissingBatchPrice, parsePositiveSellingPrice } from '@/domain/batchPricing';
 import { LocalStore } from '@/offline/localStore';
 import {
   cacheBatches,
@@ -22,7 +23,7 @@ import {
 } from '@/offline/readModels';
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
-import { createBatch, loadBatches, loadProducts, type Batch, type ProductListItem } from '@/services/catalog';
+import { createBatch, loadBatches, loadProducts, setMissingBatchSellingPrice, type Batch, type ProductListItem } from '@/services/catalog';
 import { breakpoints, colors, radii, semantic, spacing, touchTarget } from '@/theme/tokens';
 
 const BATCH_STATUSES = ['ACTIVE', 'QUARANTINED', 'RECALLED', 'EXPIRED', 'DEPLETED', 'DISPOSED'] as const;
@@ -48,6 +49,9 @@ export default function BatchesScreen() {
   const [expiryDate, setExpiryDate] = useState('');
   const [purchaseCost, setPurchaseCost] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
+  const [remediationPrices, setRemediationPrices] = useState<Record<string, string>>({});
+  const [savingPriceBatchId, setSavingPriceBatchId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [status, setStatus] = useState<(typeof BATCH_STATUSES)[number]>('ACTIVE');
   const [notes, setNotes] = useState('');
   const [query, setQuery] = useState('');
@@ -61,6 +65,7 @@ export default function BatchesScreen() {
 
   const canRead = can('inventory.read');
   const canCreate = can('inventory.product.create');
+  const canUpdate = can('inventory.product.update');
   const mutationsAuthorized = isOnline && !usingCachedPermissions;
   const desktopTable = width >= breakpoints.tablet;
 
@@ -134,11 +139,18 @@ export default function BatchesScreen() {
       .sort((left, right) => left.expiry_date.localeCompare(right.expiry_date));
   }, [batches, productMap, query, statusFilter]);
   const stale = isSnapshotStale(syncedAt ? { data: null, syncedAt } : null, OPERATIONAL_READ_MODEL_MAX_AGE_MS);
+  const parsedSellingPrice = parsePositiveSellingPrice(sellingPrice);
+  const unpricedBatches = useMemo(() => batches.filter((batch) => batch.selling_price === null), [batches]);
 
   const submit = async () => {
     if (!organizationId || !branchId || !productId || !lotNumber.trim() || !expiryDate.trim() || !mutationsAuthorized) return;
+    if (parsedSellingPrice === null) {
+      setError(t('production.batchView.sellingPriceRequired'));
+      return;
+    }
     setSaving(true);
     setError(null);
+    setMessage(null);
     try {
       await createBatch({
         organization_id: organizationId,
@@ -147,7 +159,7 @@ export default function BatchesScreen() {
         lot_number: lotNumber.trim(),
         expiry_date: expiryDate.trim(),
         purchase_cost: purchaseCost.trim() ? Number(purchaseCost) : null,
-        selling_price: sellingPrice.trim() ? Number(sellingPrice) : null,
+        selling_price: parsedSellingPrice,
         status,
         notes: notes.trim() || null,
       });
@@ -162,6 +174,43 @@ export default function BatchesScreen() {
       setError(t(errorPresentationKey(cause)));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const remediateSellingPrice = async (batch: Batch) => {
+    if (!organizationId || !branchId || !canRemediateMissingBatchPrice({
+      hasPermission: canUpdate,
+      isOnline,
+      usingCachedPermissions,
+      sellingPrice: batch.selling_price,
+    })) return;
+    const price = parsePositiveSellingPrice(remediationPrices[batch.id] ?? '');
+    if (price === null) {
+      setError(t('production.batchView.sellingPriceRequired'));
+      return;
+    }
+    setSavingPriceBatchId(batch.id);
+    setError(null);
+    setMessage(null);
+    try {
+      await setMissingBatchSellingPrice({
+        batchId: batch.id,
+        organizationId,
+        branchId,
+        sellingPrice: price,
+      });
+      setRemediationPrices((current) => {
+        const next = { ...current };
+        delete next[batch.id];
+        return next;
+      });
+      setMessage(t('production.batchView.sellingPriceSaved', { lotNumber: batch.lot_number }));
+      await refresh();
+    } catch (cause) {
+      const alreadySet = cause instanceof Error && cause.message === 'BATCH_SELLING_PRICE_ALREADY_SET';
+      setError(alreadySet ? t('production.batchView.sellingPriceAlreadySet') : t(errorPresentationKey(cause)));
+    } finally {
+      setSavingPriceBatchId(null);
     }
   };
 
@@ -204,6 +253,7 @@ export default function BatchesScreen() {
         {error ? (
           <Alert tone="danger" title={error} />
         ) : null}
+        {message ? <Alert tone="success" title={message} /> : null}
         <Text style={styles.sectionLabel}>{t('catalog.selectBranch')}</Text>
         <View style={styles.chips}>
           {branches.map((item) => (
@@ -296,6 +346,48 @@ export default function BatchesScreen() {
           )}
         </Surface>
 
+        {canUpdate && mutationsAuthorized && unpricedBatches.length > 0 ? (
+          <Surface tone="raised" style={styles.card}>
+            <CardTitle>{t('production.batchView.unpricedTitle')}</CardTitle>
+            <SupportingText>{t('production.batchView.unpricedDescription')}</SupportingText>
+            {unpricedBatches.map((batch) => {
+              const remediationValue = remediationPrices[batch.id] ?? '';
+              const invalid = remediationValue.length > 0 && parsePositiveSellingPrice(remediationValue) === null;
+              return (
+                <View key={batch.id} style={styles.remediationRow}>
+                  <View style={styles.grow}>
+                    <Text style={styles.batchName}>{productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)}</Text>
+                    <Text style={styles.meta}>{t('catalog.lotNumber')}: {batch.lot_number}</Text>
+                  </View>
+                  <FormField
+                    label={t('catalog.sellingPrice')}
+                    required
+                    hint={t('production.batchView.sellingPriceHint')}
+                    error={invalid ? t('production.batchView.sellingPriceRequired') : undefined}
+                  >
+                    <TextField
+                      accessibilityLabel={`${productMap.get(batch.product_id) ?? batch.lot_number} ${t('catalog.sellingPrice')}`}
+                      error={invalid}
+                      keyboardType="decimal-pad"
+                      onChangeText={(value) => setRemediationPrices((current) => ({ ...current, [batch.id]: value }))}
+                      placeholder={t('catalog.sellingPrice')}
+                      style={styles.priceInput}
+                      value={remediationValue}
+                    />
+                  </FormField>
+                  <Button
+                    accessibilityLabel={`${t('production.batchView.setSellingPrice')}: ${batch.lot_number}`}
+                    disabled={parsePositiveSellingPrice(remediationValue) === null || savingPriceBatchId !== null}
+                    label={t('production.batchView.setSellingPrice')}
+                    loading={savingPriceBatchId === batch.id}
+                    onPress={() => void remediateSellingPrice(batch)}
+                  />
+                </View>
+              );
+            })}
+          </Surface>
+        ) : null}
+
         {canCreate && mutationsAuthorized && branchId && products.length > 0 ? (
           <Surface tone="default" style={styles.card}>
             <CardTitle>{t('catalog.addBatch')}</CardTitle>
@@ -320,22 +412,32 @@ export default function BatchesScreen() {
               autoCapitalize="none"
             />
             <View style={styles.costRow}>
-              <TextField
-                accessibilityLabel={t('catalog.purchaseCost')}
-                value={purchaseCost}
-                onChangeText={setPurchaseCost}
-                placeholder={t('catalog.purchaseCost')}
-                style={[styles.input, styles.grow]}
-                keyboardType="decimal-pad"
-              />
-              <TextField
-                accessibilityLabel={t('catalog.sellingPrice')}
-                value={sellingPrice}
-                onChangeText={setSellingPrice}
-                placeholder={t('catalog.sellingPrice')}
-                style={[styles.input, styles.grow]}
-                keyboardType="decimal-pad"
-              />
+              <FormField label={t('catalog.purchaseCost')}>
+                <TextField
+                  accessibilityLabel={t('catalog.purchaseCost')}
+                  value={purchaseCost}
+                  onChangeText={setPurchaseCost}
+                  placeholder={t('catalog.purchaseCost')}
+                  style={styles.input}
+                  keyboardType="decimal-pad"
+                />
+              </FormField>
+              <FormField
+                label={t('catalog.sellingPrice')}
+                required
+                hint={t('production.batchView.sellingPriceHint')}
+                error={sellingPrice.length > 0 && parsedSellingPrice === null ? t('production.batchView.sellingPriceRequired') : undefined}
+              >
+                <TextField
+                  accessibilityLabel={t('catalog.sellingPrice')}
+                  error={sellingPrice.length > 0 && parsedSellingPrice === null}
+                  value={sellingPrice}
+                  onChangeText={setSellingPrice}
+                  placeholder={t('catalog.sellingPrice')}
+                  style={styles.input}
+                  keyboardType="decimal-pad"
+                />
+              </FormField>
             </View>
             <Text style={styles.sectionLabel}>{t('catalog.status')}</Text>
             <View style={styles.chips}>
@@ -397,6 +499,8 @@ const styles = StyleSheet.create({
   },
   batchCardAttention: { backgroundColor: semantic.warning.background, borderColor: semantic.warning.border },
   costRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  remediationRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  priceInput: { minWidth: 180 },
   table: {
     borderWidth: 1,
     borderColor: colors.border,

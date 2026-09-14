@@ -1,3 +1,5 @@
+import { isSellingPriceRequiredError } from '../domain/batchPricing';
+
 export type PosSyncTone = 'success' | 'offline' | 'syncing' | 'conflict';
 
 /** Presentation-only state for POS choice tabs. Focus adds a ring without replacing selection. */
@@ -21,7 +23,18 @@ export function isPosProductSelected(cartQuantity: number) {
 }
 
 /** Maps stable server error codes for display only; it never changes sale handling. */
-export function posErrorTranslationKey(error: string): 'pos.insufficientStock' | 'pos.actionFailed' | null {
-  if (error.includes('INSUFFICIENT_STOCK')) return 'pos.insufficientStock';
-  return /^[A-Z][A-Z0-9_]+$/.test(error) ? 'pos.actionFailed' : null;
+function errorText(error: unknown) {
+  if (typeof error === 'string') return error;
+  if (!error || typeof error !== 'object') return '';
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+  return [candidate.code, candidate.message, candidate.details, candidate.hint]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ');
+}
+
+export function posErrorTranslationKey(error: unknown): 'pos.insufficientStock' | 'pos.sellingPriceRequired' | 'pos.actionFailed' | null {
+  const text = errorText(error);
+  if (text.includes('INSUFFICIENT_STOCK')) return 'pos.insufficientStock';
+  if (isSellingPriceRequiredError(error)) return 'pos.sellingPriceRequired';
+  return /^[A-Z][A-Z0-9_]+$/.test(text) ? 'pos.actionFailed' : null;
 }

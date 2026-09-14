@@ -96,7 +96,14 @@
       "offlineReadOnly": "Batch creation requires an online server authorization check.",
       "safetyNote": "Expired, quarantined, recalled, depleted, and disposed batches are not sellable. Server FEFO rules remain authoritative.",
       "noFilteredBatches": "No batches match these filters.",
-      "refreshFailed": "Server refresh failed. Showing the last synchronized batches when available."
+      "refreshFailed": "Server refresh failed. Showing the last synchronized batches when available.",
+      "sellingPriceRequired": "Enter a selling price greater than zero.",
+      "sellingPriceHint": "Required before this batch can be sold. Purchase cost remains separate.",
+      "unpricedTitle": "Batches requiring a selling price",
+      "unpricedDescription": "Set a selling price for legacy batches without changing stock, expiry, status, or purchase cost.",
+      "setSellingPrice": "Set selling price",
+      "sellingPriceSaved": "Selling price saved for {{lotNumber}}.",
+      "sellingPriceAlreadySet": "This batch already has a selling price. Refresh the batch list before continuing."
     },
     "purchasingView": {
       "offlineReadOnly": "Creating suppliers, purchase orders, and receipts requires an online server authorization check.",
@@ -109,6 +116,8 @@
       "filters": { "open": "Open", "partial": "Partially received", "received": "Received", "all": "All" },
       "noCachedData": "No synchronized purchasing data is available for this branch.",
       "requiredReceiptLines": "Enter at least one received quantity with its lot number and expiry date.",
+      "sellingPriceRequired": "Enter a selling price greater than zero for every received line.",
+      "sellingPriceHint": "Required for sale and kept separate from purchase cost.",
       "requiredOrderLines": "Add at least one product with a valid quantity.",
       "statusLabel": "Status: {{status}}",
       "supplierStatus": { "active": "Active", "archived": "Archived", "unavailable": "Status unavailable" },
