@@ -9,6 +9,9 @@ export const posPresentationTranslations = {
     offlineSalesSynchronized: '{{count}} offline sale(s) synchronized.',
     offlineSalesConflict: '{{count}} sale(s) need conflict resolution.',
     offlinePriceQuote: 'Price based on the last server quote synchronized at {{timestamp}}. The server will revalidate the sale.',
+    sellingPriceRequired: 'Selling price required. Set a selling price for the eligible batch before completing this sale.',
+    priceUnavailable: 'Price unavailable',
+    manageBatchPrices: 'Set batch selling price',
     actionFailed: 'Unable to complete this POS action. Please try again.',
   } },
   fr: { pos: {
@@ -21,6 +24,9 @@ export const posPresentationTranslations = {
     offlineSalesSynchronized: '{{count}} vente(s) hors ligne synchronisée(s).',
     offlineSalesConflict: '{{count}} vente(s) nécessitent une résolution de conflit.',
     offlinePriceQuote: 'Prix basé sur le dernier devis serveur synchronisé à {{timestamp}}. Le serveur revalidera la vente.',
+    sellingPriceRequired: 'Prix de vente requis. Définissez un prix de vente pour le lot admissible avant de terminer cette vente.',
+    priceUnavailable: 'Prix indisponible',
+    manageBatchPrices: 'Définir le prix de vente du lot',
     actionFailed: 'Impossible de terminer cette action de caisse. Réessayez.',
   } },
 } as const;

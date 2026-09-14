@@ -37,9 +37,13 @@ describe('POS visual presentation state', () => {
 
   it('maps known blocked-stock errors and safely localizes unknown errors', () => {
     expect(posErrorTranslationKey('INSUFFICIENT_STOCK')).toBe('pos.insufficientStock');
+    expect(posErrorTranslationKey('SELLING_PRICE_REQUIRED')).toBe('pos.sellingPriceRequired');
+    expect(posErrorTranslationKey({ code: 'P0001', message: 'SELLING_PRICE_REQUIRED' })).toBe('pos.sellingPriceRequired');
     expect(posErrorTranslationKey('UNEXPECTED_UPSTREAM_RESPONSE')).toBe('pos.actionFailed');
     expect(posErrorTranslationKey('No trusted synchronized price is available.')).toBeNull();
     expect(posPresentationTranslations.en.pos.actionFailed).toBeTruthy();
     expect(posPresentationTranslations.fr.pos.actionFailed).toBeTruthy();
+    expect(posPresentationTranslations.en.pos.sellingPriceRequired).toContain('Selling price required');
+    expect(posPresentationTranslations.fr.pos.sellingPriceRequired).toContain('Prix de vente requis');
   });
 });
