@@ -23,7 +23,16 @@ import {
 } from '@/offline/readModels';
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
-import { createBatch, loadBatches, loadProducts, setMissingBatchSellingPrice, type Batch, type ProductListItem } from '@/services/catalog';
+import {
+  createBatch,
+  loadBatchStockBalances,
+  loadBatches,
+  loadProducts,
+  setMissingBatchSellingPrice,
+  type Batch,
+  type BatchStockBalance,
+  type ProductListItem,
+} from '@/services/catalog';
 import { breakpoints, colors, radii, semantic, spacing, touchTarget } from '@/theme/tokens';
 
 const BATCH_STATUSES = ['ACTIVE', 'QUARANTINED', 'RECALLED', 'EXPIRED', 'DEPLETED', 'DISPOSED'] as const;
@@ -44,6 +53,7 @@ export default function BatchesScreen() {
   const branchId = branch?.id ?? null;
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [batchBalances, setBatchBalances] = useState<BatchStockBalance[]>([]);
   const [productId, setProductId] = useState<string | null>(null);
   const [lotNumber, setLotNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
@@ -67,7 +77,9 @@ export default function BatchesScreen() {
   const canCreate = can('inventory.product.create');
   const canUpdate = can('inventory.product.update');
   const mutationsAuthorized = isOnline && !usingCachedPermissions;
-  const desktopTable = width >= breakpoints.tablet;
+  // The added derived-stock columns remain readable as structured cards until the
+  // desktop table has enough room for every quantity and price.
+  const desktopTable = width >= breakpoints.desktop;
 
   const applyCachedReadModels = useCallback(() => {
     if (!organizationId || !branchId) return false;
@@ -82,6 +94,7 @@ export default function BatchesScreen() {
         : [],
     );
     setBatches(cachedBatches?.data ?? []);
+    setBatchBalances([]);
     const oldest = cachedBatches ? oldestSnapshotSyncedAt(cachedProducts, cachedBatches) : null;
     setSyncedAt(oldest);
     setUsingCachedData(Boolean(cachedBatches));
@@ -101,12 +114,18 @@ export default function BatchesScreen() {
     setError(null);
     try {
       const [nextProducts, nextBatches] = await Promise.all([loadProducts(organizationId), loadBatches(organizationId, branchId)]);
+      const nextBatchBalances = await loadBatchStockBalances(
+        organizationId,
+        branchId,
+        nextBatches.map((batch) => batch.id),
+      );
       if (requestId !== refreshRequest.current) return;
       const nextSyncedAt = new Date().toISOString();
       cacheProducts(localStore, organizationId, nextProducts, nextSyncedAt);
       cacheBatches(localStore, organizationId, branchId, nextBatches, nextSyncedAt);
       setProducts(nextProducts);
       setBatches(nextBatches);
+      setBatchBalances(nextBatchBalances);
       setSyncedAt(nextSyncedAt);
       setUsingCachedData(false);
       setProductId((current) => (current && nextProducts.some((item) => item.id === current) ? current : (nextProducts[0]?.id ?? null)));
@@ -125,6 +144,7 @@ export default function BatchesScreen() {
   }, [refresh]);
 
   const productMap = useMemo(() => new Map(products.map((item) => [item.id, item.name])), [products]);
+  const batchBalanceMap = useMemo(() => new Map(batchBalances.map((item) => [item.batch_id, item])), [batchBalances]);
   const visibleBatches = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return batches
@@ -222,6 +242,10 @@ export default function BatchesScreen() {
           currency: organization?.currency_code ?? 'XOF',
           maximumFractionDigits: 2,
         }).format(value);
+  const quantity = (value: number | null | undefined) =>
+    value === null || value === undefined
+      ? t('catalog.balanceUnavailable')
+      : new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(value);
   if (!canRead)
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -299,6 +323,9 @@ export default function BatchesScreen() {
                 <Text style={[styles.tableHeading, styles.statusColumn]}>{t('catalog.status')}</Text>
                 <Text style={[styles.tableHeading, styles.moneyColumn]}>{t('catalog.purchaseCost')}</Text>
                 <Text style={[styles.tableHeading, styles.moneyColumn]}>{t('catalog.sellingPrice')}</Text>
+                <Text style={[styles.tableHeading, styles.quantityColumn]}>{t('catalog.onHandQuantity')}</Text>
+                <Text style={[styles.tableHeading, styles.quantityColumn]}>{t('catalog.reservedQuantity')}</Text>
+                <Text style={[styles.tableHeading, styles.quantityColumn]}>{t('catalog.availableQuantity')}</Text>
               </View>
               {visibleBatches.map((batch) => (
                 <View key={batch.id} style={styles.tableRow}>
@@ -314,6 +341,9 @@ export default function BatchesScreen() {
                   </View>
                   <Text style={[styles.meta, styles.moneyColumn]}>{money(batch.purchase_cost)}</Text>
                   <Text style={[styles.meta, styles.moneyColumn]}>{money(batch.selling_price)}</Text>
+                  <Text style={[styles.meta, styles.quantityColumn]}>{quantity(batchBalanceMap.get(batch.id)?.on_hand_quantity)}</Text>
+                  <Text style={[styles.meta, styles.quantityColumn]}>{quantity(batchBalanceMap.get(batch.id)?.reserved_quantity)}</Text>
+                  <Text style={[styles.meta, styles.quantityColumn]}>{quantity(batchBalanceMap.get(batch.id)?.available_quantity)}</Text>
                 </View>
               ))}
             </View>
@@ -340,6 +370,11 @@ export default function BatchesScreen() {
                   <Text style={styles.meta}>
                     {t('catalog.sellingPrice')}: {money(batch.selling_price)}
                   </Text>
+                </View>
+                <View accessibilityLabel={t('catalog.batchStockSummary')} style={styles.quantityRow}>
+                  <Text style={styles.meta}>{t('catalog.onHandQuantity')}: {quantity(batchBalanceMap.get(batch.id)?.on_hand_quantity)}</Text>
+                  <Text style={styles.meta}>{t('catalog.reservedQuantity')}: {quantity(batchBalanceMap.get(batch.id)?.reserved_quantity)}</Text>
+                  <Text style={styles.meta}>{t('catalog.availableQuantity')}: {quantity(batchBalanceMap.get(batch.id)?.available_quantity)}</Text>
                 </View>
               </View>;
             })
@@ -499,6 +534,7 @@ const styles = StyleSheet.create({
   },
   batchCardAttention: { backgroundColor: semantic.warning.background, borderColor: semantic.warning.border },
   costRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  quantityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   remediationRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: spacing.md, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
   priceInput: { minWidth: 180 },
   table: {
@@ -528,6 +564,7 @@ const styles = StyleSheet.create({
   expiryColumn: { flex: 1, minWidth: 120 },
   statusColumn: { flex: 1, minWidth: 120 },
   moneyColumn: { flex: 1, minWidth: 100, textAlign: 'right' },
+  quantityColumn: { flex: 1, minWidth: 96, textAlign: 'right' },
   input: {
     minHeight: touchTarget,
     borderWidth: 1,
