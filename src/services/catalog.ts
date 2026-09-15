@@ -6,8 +6,13 @@ type Category = Database['public']['Tables']['categories']['Row'];
 type Manufacturer = Database['public']['Tables']['manufacturers']['Row'];
 type Barcode = Database['public']['Tables']['product_barcodes']['Row'];
 type Batch = Database['public']['Tables']['batches']['Row'];
+type InventoryBalance = Database['public']['Views']['inventory_balances']['Row'];
 
 export type ProductListItem = Product & { primaryBarcode: string | null };
+export type BatchStockBalance = Pick<
+  InventoryBalance,
+  'batch_id' | 'on_hand_quantity' | 'reserved_quantity' | 'available_quantity'
+>;
 
 function cleanSearch(value: string) {
   return value.trim().replace(/[,%()]/g, ' ');
@@ -153,6 +158,28 @@ export async function loadBatches(organizationId: string, branchId?: string | nu
     .order('expiry_date');
   if (branchId) query = query.eq('branch_id', branchId);
   const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Read-only derived stock values for batches already visible to the current user.
+ * A missing row means the ledger has no balance for that batch; callers must not
+ * infer that it represents zero stock.
+ */
+export async function loadBatchStockBalances(
+  organizationId: string,
+  branchId: string,
+  batchIds: string[],
+): Promise<BatchStockBalance[]> {
+  if (batchIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('inventory_balances')
+    .select('batch_id,on_hand_quantity,reserved_quantity,available_quantity')
+    .eq('organization_id', organizationId)
+    .eq('branch_id', branchId)
+    .in('batch_id', batchIds);
   if (error) throw error;
   return data;
 }
