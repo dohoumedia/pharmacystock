@@ -37,17 +37,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const responseAndCache = caches.match(request).then((cached) => {
-    if (cached) return { response: cached };
+  const responseAndCache = caches.match(request)
+    .then((cached) => {
+      if (cached) return { response: cached };
 
-    return fetch(request).then((response) => {
-      if (!response.ok) return { response };
+      return fetch(request).then((response) => {
+        if (!response.ok) return { response };
 
-      const copy = response.clone();
-      const cacheWrite = caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => undefined);
-      return { response, cacheWrite };
-    });
-  });
+        const copy = response.clone();
+        const cacheWrite = caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => undefined);
+        return { response, cacheWrite };
+      });
+    })
+    .catch(() => ({
+      response: new Response(null, {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Cache-Control': 'no-store' },
+      }),
+    }));
 
   event.waitUntil(responseAndCache.then(({ cacheWrite }) => cacheWrite).catch(() => undefined));
   event.respondWith(responseAndCache.then(({ response }) => response));
