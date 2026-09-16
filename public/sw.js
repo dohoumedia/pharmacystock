@@ -37,10 +37,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-      if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
-      return response;
-    })),
-  );
+  const responseAndCache = caches.match(request).then((cached) => {
+    if (cached) return { response: cached };
+
+    return fetch(request).then((response) => {
+      if (!response.ok) return { response };
+
+      const copy = response.clone();
+      const cacheWrite = caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => undefined);
+      return { response, cacheWrite };
+    });
+  });
+
+  event.waitUntil(responseAndCache.then(({ cacheWrite }) => cacheWrite).catch(() => undefined));
+  event.respondWith(responseAndCache.then(({ response }) => response));
 });
