@@ -2,6 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { env } from '@/lib/env';
+import { isSupabaseAvailable } from './connectivityProbe';
 
 export type ConnectivityState = 'checking' | 'online' | 'offline';
 
@@ -24,18 +25,9 @@ export function ConnectivityProvider({ children }: PropsWithChildren) {
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
-    try {
-      await fetch(`${env.supabaseUrl}/rest/v1/`, {
-        method: 'HEAD',
-        headers: { apikey: env.supabasePublishableKey },
-        cache: 'no-store',
-      });
-      setState('online');
-    } catch {
-      setState('offline');
-    } finally {
-      setLastCheckedAt(Date.now());
-    }
+    const available = await isSupabaseAvailable(fetch, env.supabaseUrl, env.supabasePublishableKey);
+    setState(available ? 'online' : 'offline');
+    setLastCheckedAt(Date.now());
   }, []);
 
   useEffect(() => {
