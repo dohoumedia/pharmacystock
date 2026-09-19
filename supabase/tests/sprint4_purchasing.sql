@@ -80,6 +80,55 @@ begin
   if (select count(*) from public.purchase_orders where idempotency_key='test:po:001') <> 1 then raise exception 'PUR-T-004 failed: duplicate PO created'; end if;
 end $$;
 
+-- Duplicate PO-line identifiers in one receipt payload fail before any receiving
+-- state is persisted. This protects the receipt projection from diverging from
+-- the idempotent immutable inventory movement.
+do $$
+declare
+  v_order uuid;
+  v_line uuid;
+  v_receipts bigint;
+  v_receipt_lines bigint;
+  v_batches bigint;
+  v_movements bigint;
+  v_audits bigint;
+  v_received numeric;
+  v_balance numeric;
+  v_status text;
+begin
+  select id,status into v_order,v_status from public.purchase_orders where idempotency_key='test:po:001';
+  select id,received_quantity into v_line,v_received from public.purchase_order_lines where purchase_order_id=v_order;
+  select count(*) into v_receipts from public.purchase_receipts where purchase_order_id=v_order;
+  select count(*) into v_receipt_lines from public.purchase_receipt_lines where purchase_order_line_id=v_line;
+  select count(*) into v_batches from public.batches where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  select count(*) into v_movements from public.inventory_movements where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  select count(*) into v_audits from public.audit_logs where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and event_type='purchase.received';
+  select coalesce(sum(on_hand_quantity),0) into v_balance from public.inventory_balances where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+  begin
+    perform public.receive_purchase_order(
+      v_order,'RCPT-DUPLICATE-LINE',null,
+      jsonb_build_array(
+        jsonb_build_object('purchase_order_line_id',v_line,'quantity',1,'unit_cost',1250,'selling_price',1500,'lot_number','LOT-DUPLICATE-LINE','expiry_date',(current_date+365)::text),
+        jsonb_build_object('purchase_order_line_id',v_line,'quantity',1,'unit_cost',1250,'selling_price',1500,'lot_number','LOT-DUPLICATE-LINE','expiry_date',(current_date+365)::text)
+      ),
+      'Must fail before receiving writes','test:receipt:duplicate-line'
+    );
+    raise exception 'PUR-DUP-001 failed: duplicate PO line was accepted';
+  exception when check_violation then
+    if sqlerrm <> 'DUPLICATE_PURCHASE_ORDER_LINE' then raise; end if;
+  end;
+
+  if (select count(*) from public.purchase_receipts where purchase_order_id=v_order) <> v_receipts then raise exception 'PUR-DUP-002 failed: duplicate payload persisted a receipt'; end if;
+  if (select count(*) from public.purchase_receipt_lines where purchase_order_line_id=v_line) <> v_receipt_lines then raise exception 'PUR-DUP-003 failed: duplicate payload persisted receipt lines'; end if;
+  if (select count(*) from public.batches where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') <> v_batches then raise exception 'PUR-DUP-004 failed: duplicate payload persisted a batch'; end if;
+  if (select count(*) from public.inventory_movements where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') <> v_movements then raise exception 'PUR-DUP-005 failed: duplicate payload persisted a movement'; end if;
+  if (select received_quantity from public.purchase_order_lines where id=v_line) <> v_received then raise exception 'PUR-DUP-006 failed: duplicate payload changed received quantity'; end if;
+  if (select status from public.purchase_orders where id=v_order) <> v_status then raise exception 'PUR-DUP-007 failed: duplicate payload changed PO status'; end if;
+  if (select coalesce(sum(on_hand_quantity),0) from public.inventory_balances where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa') <> v_balance then raise exception 'PUR-DUP-008 failed: duplicate payload changed inventory balance'; end if;
+  if (select count(*) from public.audit_logs where organization_id='eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and event_type='purchase.received') <> v_audits then raise exception 'PUR-DUP-009 failed: duplicate payload persisted an audit event'; end if;
+end $$;
+
 -- Direct line mutation is blocked; quantities are controlled by domain RPCs.
 do $$
 begin
