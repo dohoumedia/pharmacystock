@@ -38,14 +38,17 @@ Never operate on another Supabase project for this repository.
 Consult specifications in this order:
 
 1. `AGENTS.md`
-2. `docs/CODEX_PRODUCTION_HANDOFF.md`
-3. `docs/UI_UX_BLUEPRINT.md`
-4. `docs/OFFLINE_FIRST_ARCHITECTURE.md`
-5. PRD
-6. Functional requirements
-7. User stories / business rules
-8. Security / RLS requirements
-9. QA requirements
+2. `docs/AGENT_OPERATING_MODEL.md`
+3. `docs/CODEX_PRODUCTION_HANDOFF.md`
+4. `docs/UI_UX_BLUEPRINT.md`
+5. `docs/OFFLINE_FIRST_ARCHITECTURE.md`
+6. PRD
+7. Functional requirements
+8. User stories / business rules
+9. Security / RLS requirements
+10. QA requirements
+
+`docs/AGENT_OPERATING_MODEL.md` is mandatory for future multi-agent and Codex work.
 
 If specifications materially conflict, document the conflict and stop that portion rather than guessing.
 
