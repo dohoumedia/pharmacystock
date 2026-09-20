@@ -99,7 +99,7 @@ export default function ExpiryScreen() {
   }, {}), [risk]);
   const valueAtRisk = useMemo(() => risk.filter((item) => item.risk_bucket !== 'OK').reduce((sum, item) => sum + Number(item.value_at_risk ?? 0), 0), [risk]);
 
-  const runAction = async (action: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE') => {
+  const runAction = async (action: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE' | 'RECALL') => {
     if (!selected?.batch_id || !mutationAllowed) return;
     setSaving(true); setError(null);
     try {
@@ -210,6 +210,7 @@ export default function ExpiryScreen() {
           <View style={styles.actions}>
             {selected.batch_status === 'ACTIVE' && Number(selected.days_remaining ?? -1) >= 0 ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('PRIORITIZE_SALE')} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.prioritizeSale')}</Text></Pressable> : null}
             {selected.batch_status === 'ACTIVE' ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('QUARANTINE')} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.quarantine')}</Text></Pressable> : null}
+            {selected.batch_status === 'ACTIVE' || selected.batch_status === 'QUARANTINED' ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('RECALL')} style={[styles.dangerButton,!mutationAllowed&&styles.disabled]}><Text style={styles.dangerText}>{t('expiry.recall')}</Text></Pressable> : null}
             {selected.batch_status === 'QUARANTINED' && Number(selected.days_remaining ?? -1) >= 0 ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('RELEASE_QUARANTINE')} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.releaseQuarantine')}</Text></Pressable> : null}
           </View>
           <View style={styles.returnRow}><TextInput editable={mutationAllowed} keyboardType="decimal-pad" style={styles.smallInput} placeholder={t('expiry.returnQuantity')} value={returnQuantity} onChangeText={setReturnQuantity}/><Pressable disabled={saving || !returnQuantity || !mutationAllowed} onPress={() => void submitReturn()} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.returnSupplier')}</Text></Pressable></View>
