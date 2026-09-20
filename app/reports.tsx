@@ -9,7 +9,7 @@ import { cacheReports, getCachedReports } from '@/offline/reportReadModel';
 import { isSnapshotStale, OPERATIONAL_READ_MODEL_MAX_AGE_MS } from '@/offline/readModels';
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
-import { loadDailySales, loadInventoryValue, type DailySalesReport, type InventoryValueReport } from '@/services/coreCompletion';
+import { loadDailySales, loadExpiryStatusSummary, loadInventoryValue, loadPurchasingSummary, loadTransferSummary, type DailySalesReport, type ExpiryStatusSummary, type InventoryValueReport, type PurchasingSummary, type TransferSummary } from '@/services/coreCompletion';
 import { colors, radii, spacing, touchTarget } from '@/theme/tokens';
 
 const localStore = new LocalStore();
@@ -21,6 +21,9 @@ export default function ReportsScreen() {
   const { isOnline } = useConnectivity();
   const [sales, setSales] = useState<DailySalesReport[]>([]);
   const [stock, setStock] = useState<InventoryValueReport | null>(null);
+  const [expiry, setExpiry] = useState<ExpiryStatusSummary | null>(null);
+  const [purchasing, setPurchasing] = useState<PurchasingSummary | null>(null);
+  const [transfers, setTransfers] = useState<TransferSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
@@ -33,7 +36,7 @@ export default function ReportsScreen() {
     if (!organization || !branch) return false;
     const cached = getCachedReports(localStore, organization.id, branch.id);
     if (!cached) return false;
-    setSales(cached.data.dailySales); setStock(cached.data.inventoryValue);
+    setSales(cached.data.dailySales); setStock(cached.data.inventoryValue); setExpiry(cached.data.expirySummary); setPurchasing(cached.data.purchasingSummary); setTransfers(cached.data.transferSummary);
     setSyncedAt(cached.syncedAt); setUsingCache(true);
     return true;
   }, [organization, branch]);
@@ -43,13 +46,19 @@ export default function ReportsScreen() {
     setLoading(true); setError(false); applyCache();
     if (!isOnline) { setLoading(false); return; }
     try {
-      const [dailySales, inventoryValue] = await Promise.all([loadDailySales(organization.id, branch.id), loadInventoryValue(organization.id, branch.id)]);
+      const [dailySales, inventoryValue, expirySummary, purchasingSummary, transferSummary] = await Promise.all([
+        loadDailySales(organization.id, branch.id),
+        loadInventoryValue(organization.id, branch.id),
+        loadExpiryStatusSummary(organization.id, branch.id),
+        can('purchase.read') ? loadPurchasingSummary(organization.id, branch.id) : Promise.resolve(null),
+        can('transfer.read') ? loadTransferSummary(organization.id, branch.id) : Promise.resolve(null),
+      ]);
       const now = new Date().toISOString();
-      cacheReports(localStore, organization.id, branch.id, { dailySales, inventoryValue }, now);
-      setSales(dailySales); setStock(inventoryValue); setSyncedAt(now); setUsingCache(false);
+      cacheReports(localStore, organization.id, branch.id, { dailySales, inventoryValue, expirySummary, purchasingSummary, transferSummary }, now);
+      setSales(dailySales); setStock(inventoryValue); setExpiry(expirySummary); setPurchasing(purchasingSummary); setTransfers(transferSummary); setSyncedAt(now); setUsingCache(false);
     } catch { setError(true); applyCache(); }
     finally { setLoading(false); }
-  }, [organization, branch, canRead, isOnline, applyCache]);
+  }, [organization, branch, canRead, isOnline, applyCache, can]);
 
   useEffect(() => { const timer = setTimeout(() => void refresh(), 0); return () => clearTimeout(timer); }, [refresh]);
   if (!organization || !branch) return <SafeAreaView style={s.safe}><View style={s.center}><Text>{t('organization.noOrganization')}</Text></View></SafeAreaView>;
@@ -62,6 +71,9 @@ export default function ReportsScreen() {
     <ReadModelStatus loading={loading} usingCachedData={usingCache} stale={stale} syncedAt={syncedAt} hasData={Boolean(stock || sales.length)} />
     {error ? <View accessibilityRole="alert" style={s.errorBox}><Text style={s.error}>{t('production.reports.refreshFailed')}</Text><Pressable accessibilityRole="button" onPress={() => void refresh()} style={s.retry}><Text style={s.retryText}>{t('production.connectivity.retry')}</Text></Pressable></View> : null}
     <View style={s.card}><Text style={s.section}>{t('sprint7.reports.inventoryValue')}</Text>{loading && !stock ? <Text style={s.meta}>{t('common.loading')}</Text> : stock ? <View style={s.metrics}><Metric label={t('sprint7.reports.stockedBatches')} value={String(stock.stocked_batches ?? 0)} /><Metric label={t('sprint7.reports.costValue')} value={money(stock.inventory_cost_value)} /><Metric label={t('sprint7.reports.retailValue')} value={money(stock.inventory_retail_value)} /></View> : <Text style={s.meta}>{t('sprint7.reports.noData')}</Text>}</View>
+    <View style={s.card}><Text style={s.section}>{t('sprint7.reports.expiryStatus')}</Text>{expiry ? <View style={s.metrics}><Metric label={t('sprint7.reports.expiring30d')} value={String(expiry.expiring_30d_batches ?? 0)} /><Metric label={t('sprint7.reports.expired')} value={String(expiry.expired_batches ?? 0)} /><Metric label={t('sprint7.reports.quarantined')} value={String(expiry.quarantined_batches ?? 0)} /><Metric label={t('sprint7.reports.recalled')} value={String(expiry.recalled_batches ?? 0)} /></View> : <Text style={s.meta}>{t('sprint7.reports.noData')}</Text>}</View>
+    {can('purchase.read') ? <View style={s.card}><Text style={s.section}>{t('sprint7.reports.purchasing')}</Text>{purchasing ? <View style={s.metrics}><Metric label={t('sprint7.reports.openOrders')} value={String(purchasing.open_orders ?? 0)} /><Metric label={t('sprint7.reports.partiallyReceived')} value={String(purchasing.partially_received_orders ?? 0)} /><Metric label={t('sprint7.reports.outstandingValue')} value={money(purchasing.outstanding_value)} /></View> : <Text style={s.meta}>{t('sprint7.reports.noData')}</Text>}</View> : null}
+    {can('transfer.read') ? <View style={s.card}><Text style={s.section}>{t('sprint7.reports.transfers')}</Text>{transfers ? <View style={s.metrics}><Metric label={t('sprint7.reports.openTransfers')} value={String(transfers.open_transfers ?? 0)} /><Metric label={t('sprint7.reports.inTransit')} value={String(transfers.in_transit_transfers ?? 0)} /><Metric label={t('sprint7.reports.discrepancyQty')} value={String(transfers.discrepancy_quantity ?? 0)} /></View> : <Text style={s.meta}>{t('sprint7.reports.noData')}</Text>}</View> : null}
     <View style={s.card}><Text style={s.section}>{t('sprint7.reports.dailySales')}</Text>{layout === 'desktop' && sales.length > 0 ? <View style={[s.row,s.tableHeader]}><Text style={[s.meta,s.dateColumn]}>{t('production.reports.date')}</Text><Text style={[s.meta,s.countColumn]}>{t('sprint7.reports.saleCount')}</Text><Text style={[s.meta,s.amountColumn]}>{t('production.reports.grossSales')}</Text></View> : null}{loading && sales.length === 0 ? <Text style={s.meta}>{t('common.loading')}</Text> : sales.length === 0 ? <Text style={s.meta}>{t('sprint7.reports.noData')}</Text> : sales.map((row, index) => <View key={`${row.sale_date ?? 'unknown'}-${index}`} style={s.row}><Text style={[s.bold,layout === 'desktop'&&s.dateColumn]}>{formatReportDate(row.sale_date,i18n.language)}</Text>{layout === 'desktop' ? <Text style={[s.meta,s.countColumn]}>{row.sale_count ?? 0}</Text> : <Text style={s.meta}>{t('sprint7.reports.saleCount')}: {row.sale_count ?? 0}</Text>}<Text style={[s.amount,layout === 'desktop'&&s.amountColumn]}>{money(row.gross_sales)}</Text></View>)}</View>
   </ScrollView></SafeAreaView>;
 }
