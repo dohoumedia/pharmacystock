@@ -84,6 +84,26 @@ do $$ declare v_sale uuid; v_item uuid; v_refund uuid; begin
   if (select status from public.sales where id=v_sale) <> 'PARTIALLY_REFUNDED' then raise exception 'POS-T-015 sale status not partially refunded'; end if;
   if coalesce((select on_hand_quantity from public.inventory_balances where batch_id='6aaaaaaa-3333-3333-3333-aaaaaaaaaaa1'),0) <> 1 then raise exception 'POS-T-016 refund did not restore batch quantity'; end if;
   if not exists(select 1 from public.inventory_movements where reference_type='sale_refund' and movement_type='RETURN_IN' and quantity_delta=1) then raise exception 'POS-T-017 refund movement missing'; end if;
+  if not exists(
+    select 1
+    from public.audit_logs
+    where organization_id='6aaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      and branch_id='6aaaaaaa-1111-1111-1111-aaaaaaaaaaaa'
+      and event_type='sale.refunded'
+      and entity_type='sale_refund'
+      and entity_id=v_refund::text
+      and metadata->>'sale_id'=v_sale::text
+      and metadata->>'refund_id'=v_refund::text
+      and metadata->>'refund_number'='REF-POS-001'
+      and (metadata->>'amount')::numeric=1000
+      and metadata->>'reason'='customer return'
+  ) then raise exception 'POS-T-018 refund audit event missing or incomplete'; end if;
+  if public.refund_sale(v_sale,'REF-POS-001',jsonb_build_array(jsonb_build_object('sale_item_id',v_item,'quantity',1)),'pos:refund:001','retry')<>v_refund then
+    raise exception 'POS-T-019 refund idempotency failed';
+  end if;
+  if (select count(*) from public.audit_logs where event_type='sale.refunded' and entity_id=v_refund::text)<>1 then
+    raise exception 'POS-T-020 refund retry duplicated audit event';
+  end if;
 end $$;
 
 reset role;
