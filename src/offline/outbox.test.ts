@@ -254,4 +254,69 @@ describe('offline outbox', () => {
       idempotencyKey: 'key-2',
     });
   });
+  it('allows only one coordinator to replay when browser tabs share the replay lock', async () => {
+    const storage = memoryStorage();
+    const firstOutbox = new OutboxStore(storage);
+    const secondOutbox = new OutboxStore(storage);
+    firstOutbox.enqueue({
+      id: 'sale-cross-tab-1',
+      kind: 'SALE',
+      organizationId: 'org',
+      branchId: 'branch',
+      idempotencyKey: 'cross-tab-stable-key',
+      payload: {},
+      createdAt: '2026-09-20T18:30:00.000Z',
+    });
+
+    let locked = false;
+    const sharedReplayLock = async <T extends { synced: number; conflicts: number; failed: number }>(
+      run: () => Promise<T>,
+    ): Promise<T | null> => {
+      if (locked) return null;
+      locked = true;
+      try {
+        return await run();
+      } finally {
+        locked = false;
+      }
+    };
+
+    let releaseFirst: (() => void) | undefined;
+    const firstStarted = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let finishFirst: (() => void) | undefined;
+    const firstBlocked = new Promise<void>((resolve) => { finishFirst = resolve; });
+    const seen: string[] = [];
+
+    const first = new SyncCoordinator(firstOutbox, {
+      SALE: async (operation) => {
+        seen.push(`first:${operation.idempotencyKey}`);
+        releaseFirst?.();
+        await firstBlocked;
+        return { status: 'SYNCED', serverId: 'server-cross-tab-1' };
+      },
+    }, { replayLock: sharedReplayLock });
+
+    const second = new SyncCoordinator(secondOutbox, {
+      SALE: async (operation) => {
+        seen.push(`second:${operation.idempotencyKey}`);
+        return { status: 'SYNCED', serverId: 'server-cross-tab-1' };
+      },
+    }, { replayLock: sharedReplayLock });
+
+    const firstReplay = first.replayPending();
+    await firstStarted;
+    const secondResult = await second.replayPending();
+    finishFirst?.();
+    const firstResult = await firstReplay;
+
+    expect(firstResult).toEqual({ synced: 1, conflicts: 0, failed: 0 });
+    expect(secondResult).toEqual({ synced: 0, conflicts: 0, failed: 0 });
+    expect(seen).toEqual(['first:cross-tab-stable-key']);
+    expect(new OutboxStore(storage).list()[0]).toMatchObject({
+      status: 'SYNCED',
+      idempotencyKey: 'cross-tab-stable-key',
+      serverId: 'server-cross-tab-1',
+    });
+  });
+
 });
