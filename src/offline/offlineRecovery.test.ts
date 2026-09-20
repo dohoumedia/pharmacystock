@@ -37,11 +37,18 @@ describe('offline recovery scenarios', () => {
     const outbox = new OutboxStore(storage);
 
     cachePosStockSnapshot(localStore, 'org-a', 'branch-a', [{
+      organization_id: 'org-a',
+      branch_id: 'branch-a',
       batch_id: 'batch-a',
       product_id: 'product-a',
       on_hand_quantity: 5,
       reserved_quantity: 0,
       available_quantity: 5,
+      last_movement_at: '2026-09-20T12:00:00.000Z',
+      product_name: 'Product A',
+      lot_number: 'LOT-A',
+      expiry_date: '2027-01-01',
+      batch_status: 'ACTIVE',
     }], '2026-09-20T12:00:00.000Z');
 
     const input = {
