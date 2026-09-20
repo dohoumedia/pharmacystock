@@ -48,10 +48,10 @@ do $$ declare a uuid; b uuid; begin
  b:=public.create_stock_transfer('88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','88aaaaaa-1111-1111-1111-aaaaaaaaaaaa','88aaaaaa-2222-2222-2222-aaaaaaaaaaaa','TR-S8-RETRY',jsonb_build_array(jsonb_build_object('source_batch_id','88aaaaaa-5555-5555-5555-aaaaaaaaaaaa','quantity',1)),'s8:transfer:001','retry');
  if a<>b then raise exception 'S8-T-001 transfer idempotency failed'; end if;
  if (select count(*) from public.audit_logs where event_type='transfer.created' and entity_id=a::text)<>1 then raise exception 'S8-T-012 transfer create audit missing or duplicated'; end if;
-end $;
+end $$;
 
 select public.approve_stock_transfer(current_setting('s8.transfer1')::uuid);
-do $ begin
+do $$ begin
  if not exists(
   select 1 from public.audit_logs
   where event_type='transfer.approved'
@@ -59,7 +59,7 @@ do $ begin
     and entity_id=current_setting('s8.transfer1')
     and metadata->>'status'='APPROVED'
  ) then raise exception 'S8-T-013 transfer approve audit missing'; end if;
-end $;
+end $$;
 select public.dispatch_stock_transfer(current_setting('s8.transfer1')::uuid);
 select public.dispatch_stock_transfer(current_setting('s8.transfer1')::uuid);
 
@@ -68,7 +68,7 @@ do $$ begin
  if not exists(select 1 from public.inventory_movements where organization_id='88aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and movement_type='TRANSFER_OUT' and reference_type='STOCK_TRANSFER' and quantity_delta=-6) then raise exception 'S8-T-003 transfer-out ledger movement missing'; end if;
  if (select count(*) from public.audit_logs where event_type='transfer.dispatched' and entity_id=current_setting('s8.transfer1'))<>1 then raise exception 'S8-T-014 transfer dispatch audit missing or duplicated'; end if;
  if not exists(select 1 from public.audit_logs where event_type='transfer.dispatched' and entity_id=current_setting('s8.transfer1') and (metadata->>'dispatched_quantity')::numeric=6) then raise exception 'S8-T-015 transfer dispatch audit quantity incorrect'; end if;
-end $;
+end $$;
 
 select set_config('request.jwt.claim.sub','88000000-0000-0000-0000-000000000002',true);
 select public.receive_stock_transfer(
@@ -91,12 +91,12 @@ do $$ begin
     and (metadata->>'discrepancy_quantity')::numeric=1
     and metadata->>'discrepancy_notes'='Carrier discrepancy recorded'
  ) then raise exception 'S8-T-016 transfer receive audit missing or incomplete'; end if;
-end $;
+end $$;
 
 select public.receive_stock_transfer(current_setting('s8.transfer1')::uuid,null,'replay');
-do $ begin
+do $$ begin
  if (select count(*) from public.audit_logs where event_type='transfer.received' and entity_id=current_setting('s8.transfer1'))<>1 then raise exception 'S8-T-017 transfer receive retry duplicated audit'; end if;
-end $;
+end $$;
 
 -- A member scoped to an unrelated branch must neither see nor approve/cancel the transfer.
 select set_config('request.jwt.claim.sub','88000000-0000-0000-0000-000000000003',true);
