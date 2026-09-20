@@ -255,4 +255,58 @@ describe('offline recovery scenarios', () => {
       }),
     ]));
   });
+
+  it('survives a full app reload and replays a pending sale with the original idempotency key', async () => {
+    const storage = memoryStorage();
+    const initialScope = new OfflineSessionScope(storage);
+    initialScope.bindUser('user-a');
+
+    const initialOutbox = new OutboxStore(storage);
+    initialOutbox.enqueue({
+      id: 'sale-refresh-1',
+      kind: 'SALE',
+      organizationId: 'org-a',
+      branchId: 'branch-a',
+      idempotencyKey: 'reload-stable-key',
+      payload: {},
+      createdAt: '2026-09-20T12:01:00.000Z',
+    });
+
+    expect(initialOutbox.list()[0]).toMatchObject({
+      status: 'PENDING',
+      idempotencyKey: 'reload-stable-key',
+    });
+
+    // Simulate a browser refresh / app restart by constructing fresh instances
+    // against the same persistent storage.
+    const reloadedScope = new OfflineSessionScope(storage);
+    const reloadedOutbox = new OutboxStore(storage);
+    const replayScope = reloadedScope.replayScope();
+
+    expect(reloadedOutbox.list()[0]).toMatchObject({
+      status: 'PENDING',
+      idempotencyKey: 'reload-stable-key',
+    });
+
+    const seen: string[] = [];
+    const coordinator = new SyncCoordinator(reloadedOutbox, {
+      SALE: async (operation) => {
+        seen.push(operation.idempotencyKey);
+        return { status: 'SYNCED', serverId: 'server-sale-refresh-1' };
+      },
+    }, {
+      canReplay: () => reloadedScope.isReplayScopeCurrent(replayScope),
+    });
+
+    const result = await coordinator.replayPending();
+
+    expect(result).toEqual({ synced: 1, conflicts: 0, failed: 0 });
+    expect(seen).toEqual(['reload-stable-key']);
+    expect(reloadedOutbox.list()[0]).toMatchObject({
+      status: 'SYNCED',
+      idempotencyKey: 'reload-stable-key',
+      serverId: 'server-sale-refresh-1',
+    });
+  });
+
 });
