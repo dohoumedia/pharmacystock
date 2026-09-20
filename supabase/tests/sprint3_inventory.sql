@@ -113,7 +113,31 @@ begin
   if (select status from public.inventory_stock_counts where id=v_count) <> 'COMPLETED' then
     raise exception 'INV-T-006 failed: stock count not completed';
   end if;
-end $$;
+  if not exists(
+    select 1
+    from public.audit_logs
+    where organization_id='daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      and branch_id='daaaaaaa-1111-1111-1111-aaaaaaaaaaaa'
+      and event_type='inventory.stock_count.completed'
+      and entity_type='inventory_stock_count'
+      and entity_id=v_count::text
+      and metadata->>'stock_count_id'=v_count::text
+      and (metadata->>'line_count')::integer=1
+      and (metadata->>'expected_quantity_total')::numeric=100
+      and (metadata->>'counted_quantity_total')::numeric=93
+      and (metadata->>'quantity_delta_total')::numeric=-7
+  ) then
+    raise exception 'INV-T-007 failed: stock count audit event missing or incomplete';
+  end if;
+  begin
+    perform public.complete_inventory_stock_count(v_count);
+    raise exception 'INV-T-008 failed: completed stock count replay was allowed';
+  exception when check_violation then null;
+  end;
+  if (select count(*) from public.audit_logs where event_type='inventory.stock_count.completed' and entity_id=v_count::text)<>1 then
+    raise exception 'INV-T-009 failed: stock count replay duplicated audit';
+  end if;
+end $;
 
 reset role;
 rollback;
