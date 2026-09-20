@@ -45,21 +45,33 @@ do $$ declare v_first uuid; begin
   if v_first <> 'faaaaaaa-3333-3333-3333-aaaaaaaaaaa2' then raise exception 'EXP-T-007 quarantine not excluded from FEFO'; end if;
 end $$;
 select public.record_expiry_action('faaaaaaa-3333-3333-3333-aaaaaaaaaaa1','RELEASE_QUARANTINE','qa');
+select public.record_expiry_action('faaaaaaa-3333-3333-3333-aaaaaaaaaaa2','RECALL','manufacturer recall');
+do $ begin
+  if (select status from public.batches where id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2') <> 'RECALLED' then raise exception 'EXP-T-008 recalled status failed'; end if;
+  if exists(
+    select 1 from public.get_fefo_batches(
+      'faaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      'faaaaaaa-1111-1111-1111-aaaaaaaaaaaa',
+      'faaaaaaa-2222-2222-2222-aaaaaaaaaaaa'
+    ) where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2'
+  ) then raise exception 'EXP-T-009 recalled batch remained FEFO-eligible'; end if;
+  if not exists(select 1 from public.expiry_actions where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2' and action_type='RECALL') then raise exception 'EXP-T-010 recall action missing'; end if;
+end $;
 select public.return_batch_to_supplier('faaaaaaa-3333-3333-3333-aaaaaaaaaaa1',2,'near expiry return','expiry:return:1');
 do $$ begin
-  if (select on_hand_quantity from public.inventory_balances where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa1') <> 3 then raise exception 'EXP-T-008 supplier return balance failed'; end if;
+  if (select on_hand_quantity from public.inventory_balances where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa1') <> 3 then raise exception 'EXP-T-011 supplier return balance failed'; end if;
 end $$;
 select public.dispose_batch('faaaaaaa-3333-3333-3333-aaaaaaaaaaa1','expired-risk disposal','expiry:dispose:1');
 do $$ begin
-  if coalesce((select on_hand_quantity from public.inventory_balances where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa1'),0) <> 0 then raise exception 'EXP-T-009 disposal balance failed'; end if;
-  if (select status from public.batches where id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa1') <> 'DISPOSED' then raise exception 'EXP-T-010 disposal status failed'; end if;
+  if coalesce((select on_hand_quantity from public.inventory_balances where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa1'),0) <> 0 then raise exception 'EXP-T-012 disposal balance failed'; end if;
+  if (select status from public.batches where id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa1') <> 'DISPOSED' then raise exception 'EXP-T-013 disposal status failed'; end if;
 end $$;
 
 select set_config('request.jwt.claim.sub','55000000-0000-0000-0000-000000000002',true);
 do $$ begin
   begin
     perform public.record_expiry_action('faaaaaaa-3333-3333-3333-aaaaaaaaaaa2','QUARANTINE','cashier must fail');
-    raise exception 'EXP-T-011 cashier managed expiry';
+    raise exception 'EXP-T-014 cashier managed expiry';
   exception when insufficient_privilege then null;
   end;
 end $$;
