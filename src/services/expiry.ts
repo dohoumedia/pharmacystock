@@ -38,7 +38,7 @@ export type ExpiryAction = {
   organization_id: string;
   branch_id: string;
   batch_id: string;
-  action_type: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE' | 'DISPOSE' | 'SUPPLIER_RETURN';
+  action_type: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE' | 'RECALL' | 'DISPOSE' | 'SUPPLIER_RETURN';
   quantity: number | null;
   reason: string | null;
   actor_user_id: string;
@@ -126,7 +126,7 @@ export async function acknowledgeExpiryAlert(alertId: string): Promise<string> {
   return data;
 }
 
-export async function recordExpiryAction(batchId: string, actionType: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE', reason?: string): Promise<string> {
+export async function recordExpiryAction(batchId: string, actionType: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE' | 'RECALL', reason?: string): Promise<string> {
   const { data, error } = await db.rpc('record_expiry_action', { p_batch_id: batchId, p_action_type: actionType, p_reason: reason?.trim() || null });
   if (error) throw error;
   return data;
