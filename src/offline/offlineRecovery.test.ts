@@ -219,12 +219,38 @@ describe('offline recovery scenarios', () => {
     expect(new OutboxStore(storage).list()).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'sale-1',
-        status: 'SYNCING',
+        status: 'PENDING',
         idempotencyKey: 'user-a-key-1',
       }),
       expect.objectContaining({
         id: 'sale-2',
         status: 'PENDING',
+        idempotencyKey: 'user-a-key-2',
+      }),
+    ]));
+
+    const restored = new OutboxStore(storage);
+    const resumed: string[] = [];
+    const resumeCoordinator = new SyncCoordinator(restored, {
+      SALE: async (operation) => {
+        resumed.push(operation.idempotencyKey);
+        return { status: 'SYNCED' };
+      },
+    });
+
+    const resumedResult = await resumeCoordinator.replayPending();
+
+    expect(resumedResult).toEqual({ synced: 2, conflicts: 0, failed: 0 });
+    expect(resumed).toEqual(['user-a-key-1', 'user-a-key-2']);
+    expect(restored.list()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'sale-1',
+        status: 'SYNCED',
+        idempotencyKey: 'user-a-key-1',
+      }),
+      expect.objectContaining({
+        id: 'sale-2',
+        status: 'SYNCED',
         idempotencyKey: 'user-a-key-2',
       }),
     ]));
