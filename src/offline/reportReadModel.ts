@@ -1,7 +1,7 @@
-import type { DailySalesReport, InventoryValueReport } from '../services/coreCompletion';
+import type { DailySalesReport, ExpiryStatusSummary, InventoryValueReport, PurchasingSummary, TransferSummary } from '../services/coreCompletion';
 import { LocalStore } from './localStore';
 
-export type ReportsReadModel = { dailySales: DailySalesReport[]; inventoryValue: InventoryValueReport | null };
+export type ReportsReadModel = { dailySales: DailySalesReport[]; inventoryValue: InventoryValueReport | null; expirySummary: ExpiryStatusSummary | null; purchasingSummary: PurchasingSummary | null; transferSummary: TransferSummary | null };
 const key = (organizationId: string, branchId: string) => `core:reports:${organizationId}:${branchId}`;
 
 export function cacheReports(store: LocalStore, organizationId: string, branchId: string, data: ReportsReadModel, syncedAt = new Date().toISOString()) {
