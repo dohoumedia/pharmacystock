@@ -246,7 +246,7 @@ describe('offline outbox', () => {
 
     sessionScope.bindUser('user-a');
     expect(outbox.list().find((item) => item.id === 'sale-1')).toMatchObject({
-      status: 'SYNCING',
+      status: 'PENDING',
       idempotencyKey: 'key-1',
     });
     expect(outbox.list().find((item) => item.id === 'sale-2')).toMatchObject({

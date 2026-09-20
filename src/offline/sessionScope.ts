@@ -68,7 +68,20 @@ export class OfflineSessionScope {
     if (!raw) return;
     try {
       const vault = JSON.parse(raw) as OfflineVault;
-      this.outbox.replaceAll(Array.isArray(vault.operations) ? vault.operations : []);
+      const operations = Array.isArray(vault.operations) ? vault.operations : [];
+      this.outbox.replaceAll(operations.map((operation) => {
+        if (operation.status !== 'SYNCING') return operation;
+        // A session switch can interrupt replay after the server has already
+        // accepted the request but before local state is updated. Replaying the
+        // same intent immediately is safe because the original idempotency key
+        // is preserved, and avoids waiting for the stale-SYNCING timeout.
+        return {
+          ...operation,
+          status: 'PENDING',
+          nextAttemptAt: undefined,
+          lastErrorCode: undefined,
+        };
+      }));
     } catch {
       // Keep malformed vault data quarantined rather than exposing it to a session.
     }
