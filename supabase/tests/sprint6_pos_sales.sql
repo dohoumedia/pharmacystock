@@ -104,7 +104,7 @@ do $$ declare v_sale uuid; v_item uuid; v_refund uuid; begin
   if (select count(*) from public.audit_logs where event_type='sale.refunded' and entity_id=v_refund::text)<>1 then
     raise exception 'POS-T-020 refund retry duplicated audit event';
   end if;
-end $;
+end $$;
 
 reset role;
 rollback;
