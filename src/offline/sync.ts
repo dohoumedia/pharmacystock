@@ -7,12 +7,37 @@ export type ReplayResult =
 
 export type ReplayHandler = (operation: OutboxOperation) => Promise<ReplayResult>;
 
+type ReplaySummary = { synced: number; conflicts: number; failed: number };
+type ReplayLock = (run: () => Promise<ReplaySummary>) => Promise<ReplaySummary | null>;
+
+type BrowserLockManager = {
+  request<T>(
+    name: string,
+    options: { ifAvailable: true },
+    callback: (lock: unknown | null) => T | PromiseLike<T>,
+  ): Promise<T>;
+};
+
+async function withBrowserReplayLock(run: () => Promise<ReplaySummary>): Promise<ReplaySummary | null> {
+  const locks = (globalThis as typeof globalThis & {
+    navigator?: { locks?: BrowserLockManager };
+  }).navigator?.locks;
+
+  if (!locks) return run();
+
+  return locks.request('pharmacystock:offline-replay', { ifAvailable: true }, async (lock) => {
+    if (!lock) return null;
+    return run();
+  });
+}
+
 type SyncCoordinatorOptions = {
   now?: () => Date;
   retryBaseMs?: number;
   retryMaxMs?: number;
   beforeReplay?: () => Promise<void>;
   canReplay?: () => boolean;
+  replayLock?: ReplayLock;
 };
 
 export class ReplayPreparationError extends Error {
@@ -32,6 +57,7 @@ export class SyncCoordinator {
   private readonly retryMaxMs: number;
   private readonly beforeReplay?: () => Promise<void>;
   private readonly canReplay: () => boolean;
+  private readonly replayLock: ReplayLock;
 
   constructor(
     private readonly outbox: OutboxStore,
@@ -43,13 +69,16 @@ export class SyncCoordinator {
     this.retryMaxMs = options.retryMaxMs ?? 5 * 60_000;
     this.beforeReplay = options.beforeReplay;
     this.canReplay = options.canReplay ?? (() => true);
+    this.replayLock = options.replayLock ?? withBrowserReplayLock;
   }
 
-  replayPending(): Promise<{ synced: number; conflicts: number; failed: number }> {
+  replayPending(): Promise<ReplaySummary> {
     if (this.inFlight) return this.inFlight;
-    this.inFlight = this.runReplay().finally(() => {
-      this.inFlight = null;
-    });
+    this.inFlight = this.replayLock(() => this.runReplay())
+      .then((result) => result ?? { synced: 0, conflicts: 0, failed: 0 })
+      .finally(() => {
+        this.inFlight = null;
+      });
     return this.inFlight;
   }
 
