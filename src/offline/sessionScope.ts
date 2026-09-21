@@ -19,28 +19,41 @@ export class OfflineSessionScope {
   private readonly localStore: LocalStore;
   private readonly outbox: OutboxStore;
   private generation = 0;
+  private requestedUserId: string | null;
+  private binding = Promise.resolve();
 
   constructor(storage?: KeyValueStorage) {
     this.scopeStorage = createNamespacedStorage('pharmacystock:offline-scope:v1', storage);
     this.localStore = new LocalStore(storage);
     this.outbox = new OutboxStore(storage);
+    this.requestedUserId = this.scopeStorage.get(OWNER_KEY);
   }
 
-  bindUser(userId: string | null): void {
+  bindUser(userId: string | null): Promise<void> {
+    if (this.requestedUserId === userId) return this.binding;
+    this.requestedUserId = userId;
+    // Invalidate any in-flight replay immediately, before the durable account
+    // boundary work completes.
+    this.generation += 1;
+    this.binding = this.binding.then(() => this.performBind(userId));
+    return this.binding;
+  }
+
+  private async performBind(userId: string | null): Promise<void> {
     const previousUserId = this.scopeStorage.get(OWNER_KEY);
 
     if (previousUserId === userId) return;
 
-    if (previousUserId) this.stash(previousUserId);
-    else if (this.outbox.list().length > 0) this.stash(UNOWNED_VAULT);
+    await this.outbox.refresh();
+    if (previousUserId) await this.stash(previousUserId);
+    else if (this.outbox.list().length > 0) await this.stash(UNOWNED_VAULT);
 
     this.localStore.clear();
-    this.outbox.clear();
-    this.generation += 1;
+    await this.outbox.clear();
 
     if (userId) {
       this.scopeStorage.set(OWNER_KEY, userId);
-      this.restore(userId);
+      await this.restore(userId);
     } else {
       this.scopeStorage.remove(OWNER_KEY);
     }
@@ -53,23 +66,25 @@ export class OfflineSessionScope {
   isReplayScopeCurrent(scope: OfflineReplayScope): boolean {
     return Boolean(scope.userId)
       && scope.userId === this.scopeStorage.get(OWNER_KEY)
+      && scope.userId === this.requestedUserId
       && scope.generation === this.generation;
   }
 
-  private stash(owner: string): void {
+  private async stash(owner: string): Promise<void> {
+    await this.outbox.refresh();
     const vault: OfflineVault = {
       operations: this.outbox.list().filter((operation) => operation.status !== 'SYNCED'),
     };
     this.scopeStorage.set(`vault:${owner}`, JSON.stringify(vault));
   }
 
-  private restore(owner: string): void {
+  private async restore(owner: string): Promise<void> {
     const raw = this.scopeStorage.get(`vault:${owner}`);
     if (!raw) return;
     try {
       const vault = JSON.parse(raw) as OfflineVault;
       const operations = Array.isArray(vault.operations) ? vault.operations : [];
-      this.outbox.replaceAll(operations.map((operation) => {
+      await this.outbox.replaceAll(operations.map((operation) => {
         if (operation.status !== 'SYNCING') return operation;
         // A session switch can interrupt replay after the server has already
         // accepted the request but before local state is updated. Replaying the

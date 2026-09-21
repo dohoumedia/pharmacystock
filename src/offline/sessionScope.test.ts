@@ -13,12 +13,12 @@ function memoryStorage(): KeyValueStorage {
   };
 }
 
-function seedScopedState(storage: KeyValueStorage) {
+async function seedScopedState(storage: KeyValueStorage) {
   new LocalStore(storage).set('core:customers:org-a', {
     data: [{ id: 'customer-a' }],
     syncedAt: '2026-08-23T18:00:00.000Z',
   });
-  new OutboxStore(storage).enqueue({
+  await new OutboxStore(storage).enqueue({
     id: 'sale-a',
     kind: 'SALE',
     organizationId: 'org-a',
@@ -29,68 +29,80 @@ function seedScopedState(storage: KeyValueStorage) {
 }
 
 describe('offline session scope', () => {
-  it('clears cached replica data on sign-out while restoring unsynced intents for the same user', () => {
+  it('clears cached replica data on sign-out while restoring unsynced intents for the same user', async () => {
     const storage = memoryStorage();
     const scope = new OfflineSessionScope(storage);
-    scope.bindUser('user-a');
-    seedScopedState(storage);
+    await scope.bindUser('user-a');
+    await seedScopedState(storage);
 
-    scope.bindUser(null);
-    scope.bindUser(null);
+    await scope.bindUser(null);
+    await scope.bindUser(null);
 
     expect(new LocalStore(storage).get('core:customers:org-a')).toBeNull();
-    expect(new OutboxStore(storage).list()).toEqual([]);
+    const signedOut = new OutboxStore(storage);
+    await signedOut.ready();
+    expect(signedOut.list()).toEqual([]);
 
-    scope.bindUser('user-a');
+    await scope.bindUser('user-a');
     expect(new LocalStore(storage).get('core:customers:org-a')).toBeNull();
-    expect(new OutboxStore(storage).list()[0]?.idempotencyKey).toBe('sale-key-a');
+    const restored = new OutboxStore(storage);
+    await restored.ready();
+    expect(restored.list()[0]?.idempotencyKey).toBe('sale-key-a');
   });
 
-  it('isolates stale user and organization data while preserving the original user intent', () => {
+  it('isolates stale user and organization data while preserving the original user intent', async () => {
     const storage = memoryStorage();
     const firstSession = new OfflineSessionScope(storage);
-    firstSession.bindUser('user-a');
-    seedScopedState(storage);
+    await firstSession.bindUser('user-a');
+    await seedScopedState(storage);
 
-    new OfflineSessionScope(storage).bindUser('user-b');
+    await new OfflineSessionScope(storage).bindUser('user-b');
 
     expect(new LocalStore(storage).get('core:customers:org-a')).toBeNull();
-    expect(new OutboxStore(storage).list()).toEqual([]);
+    const userBOutbox = new OutboxStore(storage);
+    await userBOutbox.ready();
+    expect(userBOutbox.list()).toEqual([]);
 
-    new OfflineSessionScope(storage).bindUser('user-a');
+    await new OfflineSessionScope(storage).bindUser('user-a');
     expect(new LocalStore(storage).get('core:customers:org-a')).toBeNull();
-    expect(new OutboxStore(storage).list()[0]?.idempotencyKey).toBe('sale-key-a');
+    const userAOutbox = new OutboxStore(storage);
+    await userAOutbox.ready();
+    expect(userAOutbox.list()[0]?.idempotencyKey).toBe('sale-key-a');
   });
 
-  it('clears unowned legacy data on the first authenticated bind after upgrade', () => {
+  it('clears unowned legacy data on the first authenticated bind after upgrade', async () => {
     const storage = memoryStorage();
-    seedScopedState(storage);
+    await seedScopedState(storage);
 
-    new OfflineSessionScope(storage).bindUser('user-a');
+    await new OfflineSessionScope(storage).bindUser('user-a');
 
     expect(new LocalStore(storage).get('core:customers:org-a')).toBeNull();
-    expect(new OutboxStore(storage).list()).toEqual([]);
+    const outbox = new OutboxStore(storage);
+    await outbox.ready();
+    expect(outbox.list()).toEqual([]);
   });
 
-  it('preserves state when the same authenticated user is rebound after restart', () => {
+  it('preserves state when the same authenticated user is rebound after restart', async () => {
     const storage = memoryStorage();
     const firstSession = new OfflineSessionScope(storage);
-    firstSession.bindUser('user-a');
-    seedScopedState(storage);
+    await firstSession.bindUser('user-a');
+    await seedScopedState(storage);
 
-    new OfflineSessionScope(storage).bindUser('user-a');
+    await new OfflineSessionScope(storage).bindUser('user-a');
 
     expect(new LocalStore(storage).get('core:customers:org-a')).not.toBeNull();
-    expect(new OutboxStore(storage).list()[0]?.idempotencyKey).toBe('sale-key-a');
+    const outbox = new OutboxStore(storage);
+    await outbox.ready();
+    expect(outbox.list()[0]?.idempotencyKey).toBe('sale-key-a');
   });
 
-  it('preserves pending and conflicted intents through a user switch', () => {
+  it('preserves pending and conflicted intents through a user switch', async () => {
     const storage = memoryStorage();
     const scope = new OfflineSessionScope(storage);
-    scope.bindUser('user-a');
-    seedScopedState(storage);
+    await scope.bindUser('user-a');
+    await seedScopedState(storage);
     const outbox = new OutboxStore(storage);
-    outbox.enqueue({
+    await outbox.enqueue({
       id: 'sale-conflict',
       kind: 'SALE',
       organizationId: 'org-a',
@@ -98,13 +110,17 @@ describe('offline session scope', () => {
       payload: {},
       createdAt: '2026-08-23T18:02:00.000Z',
     });
-    outbox.update('sale-conflict', { status: 'CONFLICT', lastErrorCode: 'INSUFFICIENT_STOCK' });
+    await outbox.update('sale-conflict', { status: 'CONFLICT', lastErrorCode: 'INSUFFICIENT_STOCK' });
 
-    scope.bindUser('user-b');
-    expect(new OutboxStore(storage).list()).toEqual([]);
+    await scope.bindUser('user-b');
+    const userBOutbox = new OutboxStore(storage);
+    await userBOutbox.ready();
+    expect(userBOutbox.list()).toEqual([]);
 
-    scope.bindUser('user-a');
-    expect(new OutboxStore(storage).list()).toEqual(expect.arrayContaining([
+    await scope.bindUser('user-a');
+    const userAOutbox = new OutboxStore(storage);
+    await userAOutbox.ready();
+    expect(userAOutbox.list()).toEqual(expect.arrayContaining([
       expect.objectContaining({ status: 'PENDING', idempotencyKey: 'sale-key-a' }),
       expect.objectContaining({ status: 'CONFLICT', idempotencyKey: 'conflict-key-a' }),
     ]));

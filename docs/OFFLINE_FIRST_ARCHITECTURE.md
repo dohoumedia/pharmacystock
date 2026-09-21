@@ -36,6 +36,13 @@ Suggested responsibilities:
 
 Platform adapters may differ internally, but domain interfaces should remain shared.
 
+On Web, the durable outbox uses IndexedDB with one record per operation. The
+operation `id` is the primary key and `idempotencyKey` is uniquely indexed, so
+enqueue and record-level status updates are transactional across tabs/windows.
+Existing `pharmacystock:outbox:v1:operations` localStorage data is imported in a
+retry-safe migration before the legacy value is removed. Native and test
+environments retain the shared key/value-compatible adapter.
+
 ## Read path
 1. Render last synchronized local data immediately.
 2. Mark it with freshness metadata.

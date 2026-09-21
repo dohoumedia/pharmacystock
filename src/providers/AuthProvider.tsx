@@ -44,12 +44,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signIn: async (email, password) => {
         const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
-        if (data.session) lifecycleRef.current?.acceptSession(data.session);
+        if (data.session) await lifecycleRef.current?.acceptSession(data.session);
       },
       signOut: async () => {
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
-        lifecycleRef.current?.acceptSignedOut();
+        await lifecycleRef.current?.acceptSignedOut();
       },
     }),
     [session, loading],

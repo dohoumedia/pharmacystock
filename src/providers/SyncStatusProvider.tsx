@@ -14,10 +14,15 @@ const outbox = new OutboxStore();
 
 export function SyncStatusProvider({ children }: PropsWithChildren) {
   const { state } = useConnectivity();
-  const [operations, setOperations] = useState<OutboxOperation[]>(() => outbox.list());
-  const refresh = () => setOperations(outbox.list());
+  const [operations, setOperations] = useState<OutboxOperation[]>([]);
+  const refresh = () => {
+    void outbox.refresh().then(setOperations);
+  };
 
-  useEffect(() => outbox.subscribe(refresh), []);
+  useEffect(() => {
+    refresh();
+    return outbox.subscribe(refresh);
+  }, []);
 
   const value = useMemo(
     () => ({ ...deriveSyncStatus(state, operations), operations, refresh }),

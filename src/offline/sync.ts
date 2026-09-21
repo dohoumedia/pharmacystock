@@ -93,6 +93,9 @@ export class SyncCoordinator {
     let conflicts = 0;
     let failed = 0;
 
+    // The browser replay lock is already held here. Refresh after acquiring it
+    // so this tab replays the latest transactionally persisted cross-tab state.
+    await this.outbox.refresh();
     const pending = this.outbox.pending(this.now());
     if (!this.canReplay()) return { synced, conflicts, failed };
     if (pending.length > 0 && this.beforeReplay) {
@@ -106,7 +109,7 @@ export class SyncCoordinator {
           : new ReplayPreparationError('REPLAY_PREPARATION_FAILED', true);
         for (const operation of pending) {
           const attemptCount = operation.attemptCount + 1;
-          this.outbox.update(operation.id, {
+          await this.outbox.update(operation.id, {
             status: preparationError.retryable ? 'FAILED' : 'CONFLICT',
             attemptCount,
             lastAttemptAt: this.now().toISOString(),
@@ -127,7 +130,7 @@ export class SyncCoordinator {
       const attemptAt = this.now().toISOString();
 
       if (!handler) {
-        this.outbox.update(operation.id, {
+        await this.outbox.update(operation.id, {
           status: 'CONFLICT',
           attemptCount: nextAttemptCount,
           lastAttemptAt: attemptAt,
@@ -138,7 +141,7 @@ export class SyncCoordinator {
         continue;
       }
 
-      this.outbox.update(operation.id, {
+      await this.outbox.update(operation.id, {
         status: 'SYNCING',
         attemptCount: nextAttemptCount,
         lastAttemptAt: attemptAt,
@@ -150,7 +153,7 @@ export class SyncCoordinator {
         const result = await handler(operation);
         if (!this.canReplay()) return { synced, conflicts, failed };
         if (result.status === 'SYNCED') {
-          this.outbox.update(operation.id, {
+          await this.outbox.update(operation.id, {
             status: 'SYNCED',
             serverId: result.serverId,
             nextAttemptAt: undefined,
@@ -158,21 +161,21 @@ export class SyncCoordinator {
           });
           synced += 1;
         } else if (result.status === 'CONFLICT') {
-          this.outbox.update(operation.id, {
+          await this.outbox.update(operation.id, {
             status: 'CONFLICT',
             nextAttemptAt: undefined,
             lastErrorCode: result.errorCode,
           });
           conflicts += 1;
         } else if (result.retryable) {
-          this.outbox.update(operation.id, {
+          await this.outbox.update(operation.id, {
             status: 'FAILED',
             nextAttemptAt: this.retryAt(nextAttemptCount),
             lastErrorCode: result.errorCode,
           });
           failed += 1;
         } else {
-          this.outbox.update(operation.id, {
+          await this.outbox.update(operation.id, {
             status: 'CONFLICT',
             nextAttemptAt: undefined,
             lastErrorCode: result.errorCode,
@@ -181,7 +184,7 @@ export class SyncCoordinator {
         }
       } catch {
         if (!this.canReplay()) return { synced, conflicts, failed };
-        this.outbox.update(operation.id, {
+        await this.outbox.update(operation.id, {
           status: 'FAILED',
           nextAttemptAt: this.retryAt(nextAttemptCount),
           lastErrorCode: 'NETWORK_OR_UNKNOWN_ERROR',
