@@ -31,7 +31,7 @@ function quote(quantity = 1) {
 }
 
 describe('offline recovery scenarios', () => {
-  it('queues an offline POS sale once and immediately reserves it against the cached stock snapshot', () => {
+  it('queues an offline POS sale once and immediately reserves it against the cached stock snapshot', async () => {
     const storage = memoryStorage();
     const localStore = new LocalStore(storage);
     const outbox = new OutboxStore(storage);
@@ -53,6 +53,7 @@ describe('offline recovery scenarios', () => {
 
     const input = {
       outbox,
+      userId: 'user-a',
       organizationId: 'org-a',
       branchId: 'branch-a',
       saleNumber: 'OFFLINE-001',
@@ -64,8 +65,8 @@ describe('offline recovery scenarios', () => {
       createdAt: '2026-09-20T12:01:00.000Z',
     };
 
-    queueOfflineSale(input);
-    queueOfflineSale(input);
+    await queueOfflineSale(input);
+    await queueOfflineSale(input);
 
     expect(outbox.list()).toHaveLength(1);
     expect(outbox.list()[0]).toMatchObject({
@@ -94,7 +95,7 @@ describe('offline recovery scenarios', () => {
 
   it('replays after reconnect with the exact original idempotency key', async () => {
     const outbox = new OutboxStore(memoryStorage());
-    outbox.enqueue({
+    await outbox.enqueue({
       id: 'sale-1',
       kind: 'SALE',
       organizationId: 'org-a',
@@ -134,7 +135,7 @@ describe('offline recovery scenarios', () => {
 
   it('turns a stock or eligibility change before sync into a terminal conflict without changing the key', async () => {
     const outbox = new OutboxStore(memoryStorage());
-    outbox.enqueue({
+    await outbox.enqueue({
       id: 'sale-1',
       kind: 'SALE',
       organizationId: 'org-a',
@@ -165,11 +166,11 @@ describe('offline recovery scenarios', () => {
   it('stops replay when the signed-in user changes and restores only the original user intent later', async () => {
     const storage = memoryStorage();
     const scope = new OfflineSessionScope(storage);
-    scope.bindUser('user-a');
+    await scope.bindUser('user-a');
     const replayScope = scope.replayScope();
     const outbox = new OutboxStore(storage);
 
-    outbox.enqueue({
+    await outbox.enqueue({
       id: 'sale-1',
       kind: 'SALE',
       organizationId: 'org-a',
@@ -178,7 +179,7 @@ describe('offline recovery scenarios', () => {
       payload: {},
       createdAt: '2026-09-20T12:01:00.000Z',
     });
-    outbox.enqueue({
+    await outbox.enqueue({
       id: 'sale-2',
       kind: 'SALE',
       organizationId: 'org-a',
@@ -208,15 +209,19 @@ describe('offline recovery scenarios', () => {
     const replay = coordinator.replayPending();
     await firstStarted;
 
-    scope.bindUser('user-b');
+    const switchUser = scope.bindUser('user-b');
     releaseFirstResolve?.();
-    await replay;
+    await Promise.all([replay, switchUser]);
 
     expect(seen).toEqual(['user-a-key-1']);
-    expect(new OutboxStore(storage).list()).toEqual([]);
+    const userBOutbox = new OutboxStore(storage);
+    await userBOutbox.ready();
+    expect(userBOutbox.list()).toEqual([]);
 
-    scope.bindUser('user-a');
-    expect(new OutboxStore(storage).list()).toEqual(expect.arrayContaining([
+    await scope.bindUser('user-a');
+    const userAOutbox = new OutboxStore(storage);
+    await userAOutbox.ready();
+    expect(userAOutbox.list()).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'sale-1',
         status: 'PENDING',
@@ -259,10 +264,10 @@ describe('offline recovery scenarios', () => {
   it('survives a full app reload and replays a pending sale with the original idempotency key', async () => {
     const storage = memoryStorage();
     const initialScope = new OfflineSessionScope(storage);
-    initialScope.bindUser('user-a');
+    await initialScope.bindUser('user-a');
 
     const initialOutbox = new OutboxStore(storage);
-    initialOutbox.enqueue({
+    await initialOutbox.enqueue({
       id: 'sale-refresh-1',
       kind: 'SALE',
       organizationId: 'org-a',
@@ -281,6 +286,8 @@ describe('offline recovery scenarios', () => {
     // against the same persistent storage.
     const reloadedScope = new OfflineSessionScope(storage);
     const reloadedOutbox = new OutboxStore(storage);
+    await reloadedScope.bindUser('user-a');
+    await reloadedOutbox.ready();
     const replayScope = reloadedScope.replayScope();
 
     expect(reloadedOutbox.list()[0]).toMatchObject({

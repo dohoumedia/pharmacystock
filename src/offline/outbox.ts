@@ -1,4 +1,5 @@
-import { createNamespacedStorage, type KeyValueStorage } from './storage';
+import { IndexedDbOutboxPersistence } from './outboxIndexedDb';
+import { createNamespacedStorage, getLocalStorage, type KeyValueStorage } from './storage';
 
 export type OutboxStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
 
@@ -18,65 +19,210 @@ export type OutboxOperation<TPayload = unknown> = {
   serverId?: string;
 };
 
+export type OutboxUpdate = Partial<Omit<OutboxOperation, 'id' | 'idempotencyKey' | 'createdAt'>>;
+
+export type ScopeTransitionPoint =
+  | 'after-owner-check'
+  | 'after-vault'
+  | 'after-clear'
+  | 'after-restore'
+  | 'after-owner-write';
+
+export class OutboxOwnerMismatchError extends Error {
+  constructor(
+    readonly expectedOwnerId: string | null,
+    readonly actualOwnerId: string | null,
+  ) {
+    super('OUTBOX_OWNER_CHANGED');
+    this.name = 'OutboxOwnerMismatchError';
+  }
+}
+
+export interface OutboxPersistence {
+  list(expectedOwnerId?: string): Promise<OutboxOperation[]>;
+  listSync?(): OutboxOperation[];
+  enqueue(operation: OutboxOperation, expectedOwnerId?: string): Promise<OutboxOperation>;
+  update(id: string, patch: OutboxUpdate, expectedOwnerId?: string): Promise<OutboxOperation | null>;
+  owner?(): Promise<string | null>;
+  importLegacyVault?(ownerId: string, raw: string): Promise<boolean>;
+  transitionOwner?(expectedOwnerId: string | null, targetOwnerId: string | null): Promise<void>;
+  removeSynced(): Promise<void>;
+  clear(): Promise<void>;
+  replaceAll(operations: OutboxOperation[]): Promise<void>;
+}
+
 type PersistedOutbox = {
   version: 1;
   operations: OutboxOperation[];
 };
 
-const KEY = 'operations';
-const listeners = new Set<() => void>();
+export type OutboxStoreOptions = {
+  indexedDB?: IDBFactory;
+  databaseName?: string;
+  transitionHook?: (point: ScopeTransitionPoint) => void;
+};
 
-function notifyListeners() {
-  for (const listener of listeners) listener();
-}
+const KEY = 'operations';
+const NAMESPACE = 'pharmacystock:outbox:v1';
+const CHANGE_CHANNEL = 'pharmacystock:outbox:v2:changes';
+const fallbackListeners = new Set<() => void>();
+const storageQueues = new WeakMap<KeyValueStorage, Promise<void>>();
 
 function sortOperations(operations: OutboxOperation[]) {
   return [...operations].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
-export class OutboxStore {
-  private readonly storage;
+function parsePersisted(raw: string | null): OutboxOperation[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as PersistedOutbox;
+    if (parsed.version !== 1 || !Array.isArray(parsed.operations)) return [];
+    return sortOperations(parsed.operations);
+  } catch {
+    return [];
+  }
+}
 
-  constructor(storage?: KeyValueStorage) {
-    this.storage = createNamespacedStorage('pharmacystock:outbox:v1', storage);
+class KeyValueOutboxPersistence implements OutboxPersistence {
+  private readonly namespaced;
+
+  constructor(private readonly storage: KeyValueStorage) {
+    this.namespaced = createNamespacedStorage(NAMESPACE, storage);
   }
 
-  list(): OutboxOperation[] {
-    const raw = this.storage.get(KEY);
-    if (!raw) return [];
-
-    try {
-      const parsed = JSON.parse(raw) as PersistedOutbox;
-      if (parsed.version !== 1 || !Array.isArray(parsed.operations)) return [];
-      return sortOperations(parsed.operations);
-    } catch {
-      return [];
-    }
+  async list(): Promise<OutboxOperation[]> {
+    await (storageQueues.get(this.storage) ?? Promise.resolve());
+    return this.listSync();
   }
 
-  enqueue<TPayload>(operation: Omit<OutboxOperation<TPayload>, 'status' | 'attemptCount'>): OutboxOperation<TPayload> {
-    const current = this.list();
-    const duplicate = current.find((item) => item.idempotencyKey === operation.idempotencyKey);
-    if (duplicate) return duplicate as OutboxOperation<TPayload>;
+  listSync(): OutboxOperation[] {
+    return parsePersisted(this.namespaced.get(KEY));
+  }
 
-    const next: OutboxOperation<TPayload> = {
-      ...operation,
-      status: 'PENDING',
-      attemptCount: 0,
-    };
-    this.write([...current, next]);
+  enqueue(operation: OutboxOperation, _expectedOwnerId?: string): Promise<OutboxOperation> {
+    return this.mutate((current) => {
+      const duplicate = current.find((item) => item.idempotencyKey === operation.idempotencyKey);
+      return { operations: duplicate ? current : [...current, operation], result: duplicate ?? operation };
+    });
+  }
+
+  update(id: string, patch: OutboxUpdate): Promise<OutboxOperation | null> {
+    return this.mutate((current) => {
+      let updated: OutboxOperation | null = null;
+      const operations = current.map((item) => {
+        if (item.id !== id) return item;
+        updated = { ...item, ...patch };
+        return updated;
+      });
+      return { operations, result: updated };
+    });
+  }
+
+  removeSynced(): Promise<void> {
+    return this.mutate((current) => ({
+      operations: current.filter((item) => item.status !== 'SYNCED'),
+      result: undefined,
+    }));
+  }
+
+  clear(): Promise<void> {
+    return this.runExclusive(() => {
+      this.namespaced.remove(KEY);
+    });
+  }
+
+  replaceAll(operations: OutboxOperation[]): Promise<void> {
+    return this.runExclusive(() => this.write(operations));
+  }
+
+  private async mutate<TResult>(
+    mutation: (operations: OutboxOperation[]) => { operations: OutboxOperation[]; result: TResult },
+  ): Promise<TResult> {
+    let result!: TResult;
+    await this.runExclusive(() => {
+      const next = mutation(parsePersisted(this.namespaced.get(KEY)));
+      this.write(next.operations);
+      result = next.result;
+    });
+    return result;
+  }
+
+  private runExclusive(action: () => void): Promise<void> {
+    const previous = storageQueues.get(this.storage) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(action);
+    storageQueues.set(this.storage, next);
     return next;
   }
 
-  update(id: string, patch: Partial<Omit<OutboxOperation, 'id' | 'idempotencyKey' | 'createdAt'>>): OutboxOperation | null {
-    const current = this.list();
-    let updated: OutboxOperation | null = null;
-    const next = current.map((item) => {
-      if (item.id !== id) return item;
-      updated = { ...item, ...patch };
-      return updated;
-    });
-    if (updated) this.write(next);
+  private write(operations: OutboxOperation[]): void {
+    if (operations.length === 0) {
+      this.namespaced.remove(KEY);
+      return;
+    }
+    const value: PersistedOutbox = { version: 1, operations: sortOperations(operations) };
+    this.namespaced.set(KEY, JSON.stringify(value));
+  }
+}
+
+export class OutboxStore {
+  private readonly persistence: OutboxPersistence;
+  private readonly listeners = new Set<() => void>();
+  private readonly channel: BroadcastChannel | null;
+  private operations: OutboxOperation[] = [];
+  private readonly initialization: Promise<void>;
+
+  constructor(storage?: KeyValueStorage, options: OutboxStoreOptions = {}) {
+    const legacyStorage = storage ?? getLocalStorage();
+    const indexedDB = options.indexedDB
+      ?? (storage === undefined && typeof globalThis.indexedDB !== 'undefined' ? globalThis.indexedDB : undefined);
+    this.persistence = indexedDB
+      ? new IndexedDbOutboxPersistence(indexedDB, legacyStorage, options.databaseName, options.transitionHook)
+      : new KeyValueOutboxPersistence(legacyStorage);
+    this.channel = indexedDB && typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined'
+      ? new BroadcastChannel(CHANGE_CHANNEL)
+      : null;
+    if (this.channel) {
+      this.channel.onmessage = () => this.notify();
+    }
+    this.initialization = this.load();
+    void this.initialization.catch(() => undefined);
+  }
+
+  async ready(): Promise<void> {
+    await this.initialization;
+  }
+
+  list(): OutboxOperation[] {
+    if (this.persistence.listSync) this.operations = this.persistence.listSync();
+    return sortOperations(this.operations);
+  }
+
+  async refresh(expectedOwnerId?: string): Promise<OutboxOperation[]> {
+    await this.initialization;
+    try {
+      await this.load(expectedOwnerId);
+    } catch (error) {
+      if (error instanceof OutboxOwnerMismatchError) this.operations = [];
+      throw error;
+    }
+    return this.list();
+  }
+
+  async enqueue<TPayload>(
+    operation: Omit<OutboxOperation<TPayload>, 'status' | 'attemptCount'>,
+    expectedOwnerId?: string,
+  ): Promise<OutboxOperation<TPayload>> {
+    await this.initialization;
+    const next: OutboxOperation<TPayload> = { ...operation, status: 'PENDING', attemptCount: 0 };
+    const persisted = await this.persistence.enqueue(next, expectedOwnerId);
+    await this.changed(expectedOwnerId, true);
+    return persisted as OutboxOperation<TPayload>;
+  }
+
+  async update(id: string, patch: OutboxUpdate, expectedOwnerId?: string): Promise<OutboxOperation | null> {
+    await this.initialization;
+    const updated = await this.persistence.update(id, patch, expectedOwnerId);
+    if (updated) await this.changed(expectedOwnerId);
     return updated;
   }
 
@@ -98,32 +244,84 @@ export class OutboxStore {
     return this.list().filter((item) => item.status === 'CONFLICT');
   }
 
-  removeSynced(): void {
-    this.write(this.list().filter((item) => item.status !== 'SYNCED'));
+  async removeSynced(): Promise<void> {
+    await this.initialization;
+    await this.persistence.removeSynced();
+    await this.changed();
   }
 
-  clear(): void {
-    this.storage.remove(KEY);
-    notifyListeners();
+  async clear(): Promise<void> {
+    await this.initialization;
+    await this.persistence.clear();
+    await this.changed();
   }
 
-  replaceAll(operations: OutboxOperation[]): void {
-    if (operations.length === 0) {
-      this.clear();
-      return;
-    }
-    this.write(operations);
+  async replaceAll(operations: OutboxOperation[]): Promise<void> {
+    await this.initialization;
+    await this.persistence.replaceAll(operations);
+    await this.changed();
+  }
+
+  supportsAtomicOwnerTransition(): boolean {
+    return Boolean(this.persistence.owner && this.persistence.transitionOwner);
+  }
+
+  async owner(): Promise<string | null> {
+    await this.initialization;
+    if (!this.persistence.owner) throw new Error('OUTBOX_ATOMIC_OWNER_UNAVAILABLE');
+    return this.persistence.owner();
+  }
+
+  async transitionOwner(expectedOwnerId: string | null, targetOwnerId: string | null): Promise<void> {
+    await this.initialization;
+    if (!this.persistence.transitionOwner) throw new Error('OUTBOX_ATOMIC_OWNER_UNAVAILABLE');
+    await this.persistence.transitionOwner(expectedOwnerId, targetOwnerId);
+    await this.changed();
+  }
+
+  async importLegacyVault(ownerId: string, raw: string): Promise<boolean> {
+    await this.initialization;
+    if (!this.persistence.importLegacyVault) throw new Error('OUTBOX_ATOMIC_OWNER_UNAVAILABLE');
+    const complete = await this.persistence.importLegacyVault(ownerId, raw);
+    await this.changed();
+    return complete;
   }
 
   subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+    this.listeners.add(listener);
+    if (!this.channel) fallbackListeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+      fallbackListeners.delete(listener);
+    };
   }
 
-  private write(operations: OutboxOperation[]): void {
-    const value: PersistedOutbox = { version: 1, operations: sortOperations(operations) };
-    this.storage.set(KEY, JSON.stringify(value));
-    notifyListeners();
+  private async load(expectedOwnerId?: string): Promise<void> {
+    this.operations = await this.persistence.list(expectedOwnerId);
+  }
+
+  private async changed(expectedOwnerId?: string, tolerateCommittedOwnerChange = false): Promise<void> {
+    try {
+      await this.load(expectedOwnerId);
+    } catch (error) {
+      if (!(error instanceof OutboxOwnerMismatchError)) throw error;
+      // Enqueue durability wins once its transaction commits: callers may
+      // clear the cart even if another tab immediately switches owners and
+      // vaults the operation. Replay updates do not tolerate this condition,
+      // so their handler stops before another server call can begin.
+      this.operations = [];
+      if (!tolerateCommittedOwnerChange) throw error;
+    }
+    if (this.channel) {
+      this.notify();
+      this.channel.postMessage({ changed: true });
+    } else {
+      for (const listener of fallbackListeners) listener();
+    }
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
   }
 }
 

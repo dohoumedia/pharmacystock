@@ -63,14 +63,15 @@ describe('offline POS catalog', () => {
     expect(searchCachedPosProducts(store, 'org', 'para').map((item) => item.id)).toEqual(['p1']);
   });
 
-  it('subtracts pending same-device sales from the trusted stock snapshot', () => {
+  it('subtracts pending same-device sales from the trusted stock snapshot', async () => {
     const storage = memoryStorage();
     const store = new LocalStore(storage);
     const outbox = new OutboxStore(storage);
     cachePosStockSnapshot(store, 'org', 'branch', [balance('p1', 5)]);
 
-    queueOfflineSale({
+    await queueOfflineSale({
       outbox,
+      userId: 'user-a',
       organizationId: 'org',
       branchId: 'branch',
       saleNumber: 'OFF-1',

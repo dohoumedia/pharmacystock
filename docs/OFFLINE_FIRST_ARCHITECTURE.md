@@ -36,6 +36,28 @@ Suggested responsibilities:
 
 Platform adapters may differ internally, but domain interfaces should remain shared.
 
+On Web, the durable outbox uses IndexedDB with one record per operation. The
+operation `id` is the primary key and `idempotencyKey` is uniquely indexed, so
+enqueue and record-level status updates are transactional across tabs/windows.
+Active-owner metadata and per-user vaulted operations live in the same database;
+account changes atomically vault the old operation set, restore the target set,
+and change ownership. Enqueue verifies the expected authenticated owner inside
+that serialization boundary and fails without writing if ownership changed.
+Reads and replay preparation verify the same owner in their IndexedDB
+transaction, so a tab that loses a concurrent account switch clears its cached
+view and cannot inspect or replay the winning tab's active operation set.
+Existing `pharmacystock:outbox:v1:operations` localStorage data is imported in a
+retry-safe migration before the legacy value is removed. Identical duplicates
+may collapse, but malformed or materially conflicting idempotency records keep
+the legacy source intact for safe retry/recovery. Pre-existing per-user session
+vaults are also imported before their user is restored, and late global legacy
+writes are routed to their recorded owner rather than whichever account is
+currently active. A current-user legacy vault is deleted only when every record
+is already active and identical; otherwise it remains quarantined in legacy
+storage so an interrupted old session transition cannot silently discard its
+only copy. Native and test environments retain the shared key/value-compatible
+adapter.
+
 ## Read path
 1. Render last synchronized local data immediately.
 2. Mark it with freshness metadata.

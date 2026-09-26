@@ -7,11 +7,11 @@ import { SyncStatusProvider } from './SyncStatusProvider';
 export function AppProviders({ children }: PropsWithChildren) {
   return (
     <ConnectivityProvider>
-      <SyncStatusProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <SyncStatusProvider>
           <OrganizationProvider>{children}</OrganizationProvider>
-        </AuthProvider>
-      </SyncStatusProvider>
+        </SyncStatusProvider>
+      </AuthProvider>
     </ConnectivityProvider>
   );
 }

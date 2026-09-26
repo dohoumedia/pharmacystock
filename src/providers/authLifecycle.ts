@@ -11,12 +11,12 @@ export type AuthLifecycleClient = {
 
 type AuthLifecycleCallbacks = {
   commit: (session: Session | null, loading: boolean) => void;
-  bindUser: (userId: string | null) => void;
+  bindUser: (userId: string | null) => void | Promise<void>;
 };
 
 export type AuthLifecycle = {
-  acceptSession: (session: Session) => void;
-  acceptSignedOut: () => void;
+  acceptSession: (session: Session) => Promise<void>;
+  acceptSignedOut: () => Promise<void>;
   stop: () => void;
 };
 
@@ -37,6 +37,7 @@ export function startAuthLifecycle(
   let stopped = false;
   let authoritativeEventSeen = false;
   let restorationTimer: ReturnType<typeof setTimeout> | null = null;
+  let transition = 0;
 
   const clearRestorationTimer = () => {
     if (restorationTimer === null) return;
@@ -52,29 +53,42 @@ export function startAuthLifecycle(
     callbacks.commit(null, false);
   };
 
-  const acceptSession = (session: Session) => {
-    if (stopped) return;
-    authoritativeEventSeen = true;
-    clearRestorationTimer();
-    callbacks.bindUser(session.user.id);
-    callbacks.commit(session, false);
+  const applyAccountBoundary = (
+    userId: string | null,
+    commit: () => void,
+  ): Promise<void> => {
+    const currentTransition = ++transition;
+    const binding = callbacks.bindUser(userId);
+    if (!binding || typeof (binding as Promise<void>).then !== 'function') {
+      if (!stopped && currentTransition === transition) commit();
+      return Promise.resolve();
+    }
+    return Promise.resolve(binding).then(() => {
+      if (!stopped && currentTransition === transition) commit();
+    });
   };
 
-  const acceptSignedOut = () => {
-    if (stopped) return;
+  const acceptSession = (session: Session): Promise<void> => {
+    if (stopped) return Promise.resolve();
     authoritativeEventSeen = true;
     clearRestorationTimer();
-    callbacks.bindUser(null);
-    callbacks.commit(null, false);
+    return applyAccountBoundary(session.user.id, () => callbacks.commit(session, false));
+  };
+
+  const acceptSignedOut = (): Promise<void> => {
+    if (stopped) return Promise.resolve();
+    authoritativeEventSeen = true;
+    clearRestorationTimer();
+    return applyAccountBoundary(null, () => callbacks.commit(null, false));
   };
 
   const { data: listener } = auth.onAuthStateChange((event, nextSession) => {
     if (event === 'SIGNED_OUT') {
-      acceptSignedOut();
+      void acceptSignedOut();
       return;
     }
 
-    if (nextSession) acceptSession(nextSession);
+    if (nextSession) void acceptSession(nextSession);
     // Null initialization/refresh callbacks are not logout. getSession below
     // settles a genuinely unauthenticated startup.
   });
@@ -86,7 +100,7 @@ export function startAuthLifecycle(
 
   void auth.getSession().then(({ data, error }) => {
     if (stopped || authoritativeEventSeen) return;
-    if (data.session) acceptSession(data.session);
+    if (data.session) void acceptSession(data.session);
     else if (!error) {
       clearRestorationTimer();
       settleUnauthenticated();
@@ -101,6 +115,7 @@ export function startAuthLifecycle(
     acceptSignedOut,
     stop: () => {
       stopped = true;
+      transition += 1;
       clearRestorationTimer();
       listener.subscription.unsubscribe();
     },

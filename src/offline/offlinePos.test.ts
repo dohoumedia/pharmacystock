@@ -30,7 +30,7 @@ describe('offline POS', () => {
     expect(cached?.syncedAt).toBe('2026-08-23T18:00:00.000Z');
   });
 
-  it('queues one pending sale with a stable idempotency key and receipt number', () => {
+  it('queues one pending sale with a stable idempotency key and receipt number', async () => {
     const storage = memoryStorage();
     const outbox = new OutboxStore(storage);
     const quote = {
@@ -40,6 +40,7 @@ describe('offline POS', () => {
 
     const input = {
       outbox,
+      userId: 'user-a',
       organizationId: 'org',
       branchId: 'branch',
       saleNumber: 'OFFLINE-001',
@@ -51,24 +52,27 @@ describe('offline POS', () => {
       createdAt: '2026-08-23T18:05:00.000Z',
     };
 
-    queueOfflineSale(input);
-    queueOfflineSale(input);
+    await queueOfflineSale(input);
+    await queueOfflineSale(input);
 
-    const pending = new OutboxStore(storage).pending();
+    const reconstructed = new OutboxStore(storage);
+    await reconstructed.ready();
+    const pending = reconstructed.pending();
     expect(pending).toHaveLength(1);
     expect(pending[0]?.idempotencyKey).toBe('sale:branch:offline-001');
     expect((pending[0]?.payload as { localReceiptNumber: string }).localReceiptNumber).toBe('OFFLINE-001');
   });
 
-  it('counts same-device provisional reservations from pending sales only', () => {
+  it('counts same-device provisional reservations from pending sales only', async () => {
     const outbox = new OutboxStore(memoryStorage());
     const quote = {
       total_amount: 2500,
       items: [{ product_id: 'product-a', batch_id: 'batch-a', quantity: 2, unit_price: 1250, line_total: 2500, expiry_date: '2027-01-01' }],
     };
 
-    queueOfflineSale({
+    await queueOfflineSale({
       outbox,
+      userId: 'user-a',
       organizationId: 'org',
       branchId: 'branch',
       saleNumber: 'OFFLINE-001',

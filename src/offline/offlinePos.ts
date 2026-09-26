@@ -47,6 +47,7 @@ export function getCachedSaleQuote(
 
 export function queueOfflineSale(input: {
   outbox: OutboxStore;
+  userId: string;
   organizationId: string;
   branchId: string;
   saleNumber: string;
@@ -81,7 +82,7 @@ export function queueOfflineSale(input: {
     idempotencyKey: input.idempotencyKey,
     payload,
     createdAt,
-  });
+  }, input.userId);
 }
 
 export function pendingSaleReservations(outbox: OutboxStore, organizationId: string, branchId: string) {
@@ -160,7 +161,7 @@ export async function replayPendingSales(
 ) {
   const { completeSale } = await import('../services/sales');
   const localStore = options.localStore ?? new LocalStore();
-  const replayScope = offlineSessionScope.replayScope();
+  const replayScope = await offlineSessionScope.verifiedReplayScope();
   let refreshedUserId: string | null = null;
   const coordinator = new SyncCoordinator(outbox, {
     SALE: async (operation: OutboxOperation) => {
@@ -211,6 +212,7 @@ export async function replayPendingSales(
         }
       }
     },
+    expectedOwnerId: replayScope.userId ?? undefined,
   });
   return coordinator.replayPending();
 }

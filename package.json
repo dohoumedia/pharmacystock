@@ -37,6 +37,7 @@
     "@types/react-dom": "^19.2.5",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.2",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "~6.0.3",
     "vitest": "latest"
   },

@@ -130,22 +130,24 @@ describe('authenticated session lifecycle', () => {
     vi.useRealTimers();
   });
 
-  it('prevents stale-user cache or pending-intent replay after sign-out and user switch', () => {
+  it('prevents stale-user cache or pending-intent replay after sign-out and user switch', async () => {
     const storage = memoryStorage();
     const scope = new OfflineSessionScope(storage);
     const localStore = new LocalStore(storage);
     const outbox = new OutboxStore(storage);
-    scope.bindUser('user-a');
+    await scope.bindUser('user-a');
     localStore.set('private:user-a', { data: ['secret-a'], syncedAt: '2026-08-24T12:00:00.000Z' });
-    outbox.enqueue({ id: 'intent-a', kind: 'SALE', organizationId: 'org-a', idempotencyKey: 'intent-a', payload: {}, createdAt: '2026-08-24T12:00:00.000Z' });
+    await outbox.enqueue({ id: 'intent-a', kind: 'SALE', organizationId: 'org-a', idempotencyKey: 'intent-a', payload: {}, createdAt: '2026-08-24T12:00:00.000Z' });
 
     const auth = fakeAuth(Promise.resolve({ data: { session: session('user-a') }, error: null }));
     startAuthLifecycle(auth.client, { commit: vi.fn(), bindUser: (userId) => scope.bindUser(userId) });
     auth.emit('SIGNED_OUT', null);
     auth.emit('SIGNED_IN', session('user-b'));
 
-    expect(localStore.get('private:user-a')).toBeNull();
-    expect(outbox.list()).toEqual([]);
-    expect(scope.replayScope().userId).toBe('user-b');
+    await vi.waitFor(() => {
+      expect(localStore.get('private:user-a')).toBeNull();
+      expect(outbox.list()).toEqual([]);
+      expect(scope.replayScope().userId).toBe('user-b');
+    });
   });
 });
