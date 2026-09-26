@@ -40,6 +40,7 @@ describe('offline POS', () => {
 
     const input = {
       outbox,
+      userId: 'user-a',
       organizationId: 'org',
       branchId: 'branch',
       saleNumber: 'OFFLINE-001',
@@ -71,6 +72,7 @@ describe('offline POS', () => {
 
     await queueOfflineSale({
       outbox,
+      userId: 'user-a',
       organizationId: 'org',
       branchId: 'branch',
       saleNumber: 'OFFLINE-001',

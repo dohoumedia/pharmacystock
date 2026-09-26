@@ -71,6 +71,7 @@ describe('offline POS catalog', () => {
 
     await queueOfflineSale({
       outbox,
+      userId: 'user-a',
       organizationId: 'org',
       branchId: 'branch',
       saleNumber: 'OFF-1',

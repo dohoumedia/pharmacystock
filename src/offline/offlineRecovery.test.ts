@@ -53,6 +53,7 @@ describe('offline recovery scenarios', () => {
 
     const input = {
       outbox,
+      userId: 'user-a',
       organizationId: 'org-a',
       branchId: 'branch-a',
       saleNumber: 'OFFLINE-001',
@@ -285,6 +286,7 @@ describe('offline recovery scenarios', () => {
     // against the same persistent storage.
     const reloadedScope = new OfflineSessionScope(storage);
     const reloadedOutbox = new OutboxStore(storage);
+    await reloadedScope.bindUser('user-a');
     await reloadedOutbox.ready();
     const replayScope = reloadedScope.replayScope();
 

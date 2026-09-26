@@ -1,4 +1,4 @@
-import { OutboxStore, type OutboxOperation } from './outbox';
+import { OutboxOwnerMismatchError, OutboxStore, type OutboxOperation, type OutboxUpdate } from './outbox';
 
 export type ReplayResult =
   | { status: 'SYNCED'; serverId?: string }
@@ -38,6 +38,7 @@ type SyncCoordinatorOptions = {
   beforeReplay?: () => Promise<void>;
   canReplay?: () => boolean;
   replayLock?: ReplayLock;
+  expectedOwnerId?: string;
 };
 
 export class ReplayPreparationError extends Error {
@@ -58,6 +59,7 @@ export class SyncCoordinator {
   private readonly beforeReplay?: () => Promise<void>;
   private readonly canReplay: () => boolean;
   private readonly replayLock: ReplayLock;
+  private readonly expectedOwnerId?: string;
 
   constructor(
     private readonly outbox: OutboxStore,
@@ -70,6 +72,7 @@ export class SyncCoordinator {
     this.beforeReplay = options.beforeReplay;
     this.canReplay = options.canReplay ?? (() => true);
     this.replayLock = options.replayLock ?? withBrowserReplayLock;
+    this.expectedOwnerId = options.expectedOwnerId;
   }
 
   replayPending(): Promise<ReplaySummary> {
@@ -88,14 +91,30 @@ export class SyncCoordinator {
     return new Date(this.now().getTime() + delay).toISOString();
   }
 
+  private async updateForReplay(id: string, patch: OutboxUpdate): Promise<boolean> {
+    try {
+      await this.outbox.update(id, patch, this.expectedOwnerId);
+      return true;
+    } catch (error) {
+      if (error instanceof OutboxOwnerMismatchError) return false;
+      throw error;
+    }
+  }
+
   private async runReplay(): Promise<{ synced: number; conflicts: number; failed: number }> {
     let synced = 0;
     let conflicts = 0;
     let failed = 0;
 
+    if (!this.canReplay()) return { synced, conflicts, failed };
     // The browser replay lock is already held here. Refresh after acquiring it
     // so this tab replays the latest transactionally persisted cross-tab state.
-    await this.outbox.refresh();
+    try {
+      await this.outbox.refresh(this.expectedOwnerId);
+    } catch (error) {
+      if (error instanceof OutboxOwnerMismatchError) return { synced, conflicts, failed };
+      throw error;
+    }
     const pending = this.outbox.pending(this.now());
     if (!this.canReplay()) return { synced, conflicts, failed };
     if (pending.length > 0 && this.beforeReplay) {
@@ -109,13 +128,13 @@ export class SyncCoordinator {
           : new ReplayPreparationError('REPLAY_PREPARATION_FAILED', true);
         for (const operation of pending) {
           const attemptCount = operation.attemptCount + 1;
-          await this.outbox.update(operation.id, {
+          if (!await this.updateForReplay(operation.id, {
             status: preparationError.retryable ? 'FAILED' : 'CONFLICT',
             attemptCount,
             lastAttemptAt: this.now().toISOString(),
             nextAttemptAt: preparationError.retryable ? this.retryAt(attemptCount) : undefined,
             lastErrorCode: preparationError.code,
-          });
+          })) return { synced, conflicts, failed };
         }
         return preparationError.retryable
           ? { synced: 0, conflicts: 0, failed: pending.length }
@@ -130,65 +149,66 @@ export class SyncCoordinator {
       const attemptAt = this.now().toISOString();
 
       if (!handler) {
-        await this.outbox.update(operation.id, {
+        if (!await this.updateForReplay(operation.id, {
           status: 'CONFLICT',
           attemptCount: nextAttemptCount,
           lastAttemptAt: attemptAt,
           nextAttemptAt: undefined,
           lastErrorCode: 'OUTBOX_HANDLER_MISSING',
-        });
+        })) return { synced, conflicts, failed };
         conflicts += 1;
         continue;
       }
 
-      await this.outbox.update(operation.id, {
+      if (!await this.updateForReplay(operation.id, {
         status: 'SYNCING',
         attemptCount: nextAttemptCount,
         lastAttemptAt: attemptAt,
         nextAttemptAt: undefined,
         lastErrorCode: undefined,
-      });
+      })) return { synced, conflicts, failed };
 
       try {
         const result = await handler(operation);
         if (!this.canReplay()) return { synced, conflicts, failed };
         if (result.status === 'SYNCED') {
-          await this.outbox.update(operation.id, {
+          if (!await this.updateForReplay(operation.id, {
             status: 'SYNCED',
             serverId: result.serverId,
             nextAttemptAt: undefined,
             lastErrorCode: undefined,
-          });
+          })) return { synced, conflicts, failed };
           synced += 1;
         } else if (result.status === 'CONFLICT') {
-          await this.outbox.update(operation.id, {
+          if (!await this.updateForReplay(operation.id, {
             status: 'CONFLICT',
             nextAttemptAt: undefined,
             lastErrorCode: result.errorCode,
-          });
+          })) return { synced, conflicts, failed };
           conflicts += 1;
         } else if (result.retryable) {
-          await this.outbox.update(operation.id, {
+          if (!await this.updateForReplay(operation.id, {
             status: 'FAILED',
             nextAttemptAt: this.retryAt(nextAttemptCount),
             lastErrorCode: result.errorCode,
-          });
+          })) return { synced, conflicts, failed };
           failed += 1;
         } else {
-          await this.outbox.update(operation.id, {
+          if (!await this.updateForReplay(operation.id, {
             status: 'CONFLICT',
             nextAttemptAt: undefined,
             lastErrorCode: result.errorCode,
-          });
+          })) return { synced, conflicts, failed };
           conflicts += 1;
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof OutboxOwnerMismatchError) return { synced, conflicts, failed };
         if (!this.canReplay()) return { synced, conflicts, failed };
-        await this.outbox.update(operation.id, {
+        if (!await this.updateForReplay(operation.id, {
           status: 'FAILED',
           nextAttemptAt: this.retryAt(nextAttemptCount),
           lastErrorCode: 'NETWORK_OR_UNKNOWN_ERROR',
-        });
+        })) return { synced, conflicts, failed };
         failed += 1;
       }
     }
