@@ -1,5 +1,7 @@
 import type { KeyValueStorage } from './storage';
 import {
+  immutableOutboxContentMatches,
+  OutboxIdempotencyConflictError,
   OutboxOwnerMismatchError,
   type OutboxOperation,
   type OutboxPersistence,
@@ -363,6 +365,9 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
         store.index(IDEMPOTENCY_INDEX).get(operation.idempotencyKey),
       ) as OutboxOperation | undefined;
       if (duplicate) {
+        if (!immutableOutboxContentMatches(duplicate, operation)) {
+          throw new OutboxIdempotencyConflictError(operation.idempotencyKey);
+        }
         await completion;
         return duplicate;
       }

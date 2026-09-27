@@ -108,6 +108,11 @@ Each queued operation should contain equivalent fields to:
 ```
 
 Never regenerate `idempotencyKey` merely because a retry occurs.
+Outbox enqueue may collapse a repeated key only when the operation kind,
+organization/branch scope, and canonical payload match the stored immutable
+intent. Reusing a key for different immutable content is an explicit conflict;
+the new operation must not be reported as queued and the original record must
+remain unchanged.
 
 ## Replay
 When connectivity returns:

@@ -38,6 +38,15 @@ export class OutboxOwnerMismatchError extends Error {
   }
 }
 
+export class OutboxIdempotencyConflictError extends Error {
+  readonly code = 'OUTBOX_IDEMPOTENCY_CONFLICT';
+
+  constructor(readonly idempotencyKey: string) {
+    super('OUTBOX_IDEMPOTENCY_CONFLICT');
+    this.name = 'OutboxIdempotencyConflictError';
+  }
+}
+
 export interface OutboxPersistence {
   list(expectedOwnerId?: string): Promise<OutboxOperation[]>;
   listSync?(): OutboxOperation[];
@@ -72,6 +81,27 @@ function sortOperations(operations: OutboxOperation[]) {
   return [...operations].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+export function immutableOutboxContentMatches(left: OutboxOperation, right: OutboxOperation): boolean {
+  const immutableContent = (operation: OutboxOperation) => ({
+    kind: operation.kind,
+    organizationId: operation.organizationId,
+    branchId: operation.branchId ?? null,
+    payload: operation.payload,
+  });
+  return stableSerialize(immutableContent(left)) === stableSerialize(immutableContent(right));
+}
+
 function parsePersisted(raw: string | null): OutboxOperation[] {
   if (!raw) return [];
   try {
@@ -102,6 +132,9 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
   enqueue(operation: OutboxOperation, _expectedOwnerId?: string): Promise<OutboxOperation> {
     return this.mutate((current) => {
       const duplicate = current.find((item) => item.idempotencyKey === operation.idempotencyKey);
+      if (duplicate && !immutableOutboxContentMatches(duplicate, operation)) {
+        throw new OutboxIdempotencyConflictError(operation.idempotencyKey);
+      }
       return { operations: duplicate ? current : [...current, operation], result: duplicate ?? operation };
     });
   }
@@ -150,7 +183,7 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
   private runExclusive(action: () => void): Promise<void> {
     const previous = storageQueues.get(this.storage) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(action);
-    storageQueues.set(this.storage, next);
+    storageQueues.set(this.storage, next.catch(() => undefined));
     return next;
   }
 
