@@ -18,6 +18,39 @@ export type OfflineSalePayload = {
   quoteSyncedAt: string;
 };
 
+export type SaleSubmissionIdentity = {
+  fingerprint: string;
+  saleNumber: string;
+  idempotencyKey: string;
+};
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+export function resolveSaleSubmissionIdentity(input: {
+  branchId: string;
+  immutableContent: unknown;
+  previous?: SaleSubmissionIdentity | null;
+  createUuid: () => string;
+}): SaleSubmissionIdentity {
+  const fingerprint = stableSerialize(input.immutableContent);
+  if (input.previous?.fingerprint === fingerprint) return input.previous;
+  const submissionId = input.createUuid();
+  return {
+    fingerprint,
+    saleNumber: `SALE-${submissionId}`,
+    idempotencyKey: `sale:${input.branchId}:${submissionId}`,
+  };
+}
+
 const quoteKey = (organizationId: string, branchId: string, lines: CartLine[]) => {
   const normalized = [...lines]
     .map((line) => ({ product_id: line.product_id, quantity: line.quantity }))
@@ -45,7 +78,7 @@ export function getCachedSaleQuote(
   return store.get<SaleQuote>(quoteKey(organizationId, branchId, lines));
 }
 
-export function queueOfflineSale(input: {
+export type QueueOfflineSaleInput = {
   outbox: OutboxStore;
   userId: string;
   organizationId: string;
@@ -59,7 +92,9 @@ export function queueOfflineSale(input: {
   quote: SaleQuote;
   quoteSyncedAt: string;
   createdAt?: string;
-}) {
+};
+
+export function queueOfflineSale(input: QueueOfflineSaleInput) {
   const createdAt = input.createdAt ?? new Date().toISOString();
   const payload: OfflineSalePayload = {
     organizationId: input.organizationId,
@@ -83,6 +118,15 @@ export function queueOfflineSale(input: {
     payload,
     createdAt,
   }, input.userId);
+}
+
+export async function queueOfflineSaleForCheckout(
+  input: QueueOfflineSaleInput,
+  onDurablyQueued: () => void,
+) {
+  const operation = await queueOfflineSale(input);
+  onDurablyQueued();
+  return operation;
 }
 
 export function pendingSaleReservations(outbox: OutboxStore, organizationId: string, branchId: string) {

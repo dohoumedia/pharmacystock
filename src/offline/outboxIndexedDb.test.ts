@@ -1,6 +1,6 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
-import { OutboxStore, type OutboxOperation } from './outbox';
+import { OutboxIdempotencyConflictError, OutboxStore, type OutboxOperation } from './outbox';
 import type { KeyValueStorage } from './storage';
 
 const LEGACY_KEY = 'pharmacystock:outbox:v1:operations';
@@ -93,7 +93,7 @@ describe('IndexedDB outbox persistence', () => {
     expect(reconstructed.list().map((item) => item.id)).toEqual(['sale-b', 'sale-a']);
   });
 
-  it('enforces one operation per idempotency key across concurrent writers', async () => {
+  it('collapses an exact retry with the same immutable content across concurrent writers', async () => {
     const factory = new IDBFactory();
     const storage = memoryStorage();
     const first = store(factory, storage, 'outbox-unique-idempotency');
@@ -101,8 +101,8 @@ describe('IndexedDB outbox persistence', () => {
     await bind(first);
 
     const results = await Promise.all([
-      first.enqueue(operation('sale-a', 'shared-idempotency', '2026-09-20T12:00:00.000Z'), 'user-a'),
-      second.enqueue(operation('sale-b', 'shared-idempotency', '2026-09-20T12:01:00.000Z'), 'user-a'),
+      first.enqueue(operation('sale-a', 'shared-idempotency', '2026-09-20T12:00:00.000Z', { saleNumber: 'SALE-1' }), 'user-a'),
+      second.enqueue(operation('sale-b', 'shared-idempotency', '2026-09-20T12:01:00.000Z', { saleNumber: 'SALE-1' }), 'user-a'),
     ]);
 
     const reconstructed = store(factory, storage, 'outbox-unique-idempotency');
@@ -110,6 +110,24 @@ describe('IndexedDB outbox persistence', () => {
     expect(reconstructed.list()).toHaveLength(1);
     expect(results[0].id).toBe(results[1].id);
     expect(reconstructed.list()[0]?.idempotencyKey).toBe('shared-idempotency');
+  });
+
+  it('rejects a reused idempotency key when immutable content differs', async () => {
+    const factory = new IDBFactory();
+    const storage = memoryStorage();
+    const outbox = store(factory, storage, 'outbox-conflicting-idempotency');
+    await bind(outbox);
+    await outbox.enqueue(
+      operation('sale-a', 'shared-idempotency', '2026-09-20T12:00:00.000Z', { saleNumber: 'SALE-1' }),
+      'user-a',
+    );
+
+    await expect(outbox.enqueue(
+      operation('sale-b', 'shared-idempotency', '2026-09-20T12:00:00.001Z', { saleNumber: 'SALE-2' }),
+      'user-a',
+    )).rejects.toBeInstanceOf(OutboxIdempotencyConflictError);
+
+    expect(outbox.list()).toEqual([expect.objectContaining({ id: 'sale-a', payload: { saleNumber: 'SALE-1' } })]);
   });
 
   it('updates individual records without overwriting unrelated operations', async () => {

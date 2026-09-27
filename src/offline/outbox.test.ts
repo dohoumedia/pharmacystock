@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OutboxStore } from './outbox';
+import { OutboxIdempotencyConflictError, OutboxStore } from './outbox';
 import { ReplayPreparationError, SyncCoordinator } from './sync';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
@@ -14,7 +14,7 @@ function memoryStorage(): KeyValueStorage {
 }
 
 describe('offline outbox', () => {
-  it('persists operations and keeps one operation per idempotency key', async () => {
+  it('collapses an exact retry with the same immutable content and idempotency key', async () => {
     const storage = memoryStorage();
     const outbox = new OutboxStore(storage);
     const envelope = {
@@ -33,6 +33,30 @@ describe('offline outbox', () => {
     await reconstructed.ready();
     expect(reconstructed.list()).toHaveLength(1);
     expect(reconstructed.list()[0]?.idempotencyKey).toBe('stable-key-1');
+  });
+
+  it('rejects a reused idempotency key when immutable content differs', async () => {
+    const storage = memoryStorage();
+    const outbox = new OutboxStore(storage);
+    const original = {
+      id: 'sale-1',
+      kind: 'SALE',
+      organizationId: 'org-1',
+      branchId: 'branch-1',
+      idempotencyKey: 'shared-key',
+      payload: { saleNumber: 'SALE-1', lines: [{ product_id: 'product-a', quantity: 1 }] },
+      createdAt: '2026-09-26T12:00:00.000Z',
+    };
+
+    await outbox.enqueue(original);
+    await expect(outbox.enqueue({
+      ...original,
+      id: 'sale-2',
+      payload: { saleNumber: 'SALE-2', lines: [{ product_id: 'product-b', quantity: 1 }] },
+      createdAt: '2026-09-26T12:00:00.001Z',
+    })).rejects.toBeInstanceOf(OutboxIdempotencyConflictError);
+
+    expect(outbox.list()).toEqual([expect.objectContaining({ id: 'sale-1', payload: original.payload })]);
   });
 
   it('notifies global status subscribers when another store instance changes the outbox', async () => {
