@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxIdempotencyConflictError, OutboxStore } from './outbox';
-import { cacheSaleQuote, getCachedSaleQuote, pendingSaleReservations, queueOfflineSale, queueOfflineSaleForCheckout, resolveSaleSubmissionIdentity } from './offlinePos';
+import { applySaleDraftMutation, cacheSaleQuote, getCachedSaleQuote, pendingSaleReservations, queueOfflineSale, queueOfflineSaleForCheckout, resolveSaleSubmissionIdentity } from './offlinePos';
 
 function memoryStorage(): KeyValueStorage {
   const values = new Map<string, string>();
@@ -59,6 +59,17 @@ describe('offline POS', () => {
     });
 
     expect(retried).toBe(first);
+  });
+
+  it('blocks cart mutation while a sale submission is in flight', () => {
+    const cart = [{ product_id: 'product-a', quantity: 1 }];
+
+    const changed = applySaleDraftMutation(true, () => {
+      cart.push({ product_id: 'product-b', quantity: 1 });
+    });
+
+    expect(changed).toBe(false);
+    expect(cart).toEqual([{ product_id: 'product-a', quantity: 1 }]);
   });
 
   it('persists the last trusted quote for an exact cart', () => {

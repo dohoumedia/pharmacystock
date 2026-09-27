@@ -127,7 +127,14 @@ describe('IndexedDB outbox persistence', () => {
       'user-a',
     )).rejects.toBeInstanceOf(OutboxIdempotencyConflictError);
 
-    expect(outbox.list()).toEqual([expect.objectContaining({ id: 'sale-a', payload: { saleNumber: 'SALE-1' } })]);
+    await expect(outbox.enqueue(
+      operation('sale-c', 'distinct-idempotency', '2026-09-20T12:00:00.002Z', { saleNumber: 'SALE-3' }),
+      'user-a',
+    )).resolves.toMatchObject({ id: 'sale-c', idempotencyKey: 'distinct-idempotency' });
+    expect(outbox.list()).toEqual([
+      expect.objectContaining({ id: 'sale-a', payload: { saleNumber: 'SALE-1' } }),
+      expect.objectContaining({ id: 'sale-c', payload: { saleNumber: 'SALE-3' } }),
+    ]);
   });
 
   it('updates individual records without overwriting unrelated operations', async () => {

@@ -24,6 +24,12 @@ export type SaleSubmissionIdentity = {
   idempotencyKey: string;
 };
 
+export function applySaleDraftMutation(submissionInFlight: boolean, mutation: () => void): boolean {
+  if (submissionInFlight) return false;
+  mutation();
+  return true;
+}
+
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
   if (value && typeof value === 'object') {
