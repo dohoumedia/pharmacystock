@@ -183,7 +183,7 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
   private runExclusive(action: () => void): Promise<void> {
     const previous = storageQueues.get(this.storage) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(action);
-    storageQueues.set(this.storage, next);
+    storageQueues.set(this.storage, next.catch(() => undefined));
     return next;
   }
 

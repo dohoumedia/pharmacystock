@@ -56,7 +56,17 @@ describe('offline outbox', () => {
       createdAt: '2026-09-26T12:00:00.001Z',
     })).rejects.toBeInstanceOf(OutboxIdempotencyConflictError);
 
-    expect(outbox.list()).toEqual([expect.objectContaining({ id: 'sale-1', payload: original.payload })]);
+    await expect(outbox.refresh()).resolves.toEqual([
+      expect.objectContaining({ id: 'sale-1', payload: original.payload }),
+    ]);
+    await expect(outbox.enqueue({
+      ...original,
+      id: 'sale-3',
+      idempotencyKey: 'distinct-key',
+      payload: { saleNumber: 'SALE-3', lines: [{ product_id: 'product-c', quantity: 1 }] },
+      createdAt: '2026-09-26T12:00:00.002Z',
+    })).resolves.toMatchObject({ id: 'sale-3', idempotencyKey: 'distinct-key' });
+    expect(outbox.list()).toHaveLength(2);
   });
 
   it('notifies global status subscribers when another store instance changes the outbox', async () => {

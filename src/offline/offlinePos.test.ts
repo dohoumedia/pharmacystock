@@ -38,8 +38,8 @@ describe('offline POS', () => {
     expect(first.idempotencyKey).not.toBe(second.idempotencyKey);
   });
 
-  it('keeps the same sale identity for an exact logical retry', () => {
-    const immutableContent = {
+  it('keeps the same sale identity for an exact logical retry across a connectivity change', () => {
+    const onlineAttempt = {
       organizationId: 'org',
       branchId: 'branch',
       lines: [{ product_id: 'product-a', quantity: 1 }],
@@ -47,12 +47,13 @@ describe('offline POS', () => {
     };
     const first = resolveSaleSubmissionIdentity({
       branchId: 'branch',
-      immutableContent,
+      immutableContent: onlineAttempt,
       createUuid: () => '11111111-1111-4111-8111-111111111111',
     });
+    const offlineRetry = { ...onlineAttempt, payments: [{ amount: 1250, method: 'CASH' }] };
     const retried = resolveSaleSubmissionIdentity({
       branchId: 'branch',
-      immutableContent: { ...immutableContent, payments: [{ amount: 1250, method: 'CASH' }] },
+      immutableContent: offlineRetry,
       previous: first,
       createUuid: () => { throw new Error('retry generated a new identity'); },
     });
