@@ -1,7 +1,7 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import { LocalStore } from './localStore';
-import { OutboxStore } from './outbox';
+import { OutboxOwnerMismatchError, OutboxStore } from './outbox';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
 import { SyncCoordinator } from './sync';
@@ -27,6 +27,18 @@ function memoryStorage(): KeyValueStorage {
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
     removeItem: (key) => values.delete(key),
+  };
+}
+
+function interceptingStorage(onRemove: (key: string) => void): KeyValueStorage {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => {
+      values.delete(key);
+      onRemove(key);
+    },
   };
 }
 
@@ -141,6 +153,38 @@ describe('offline session scope', () => {
       expect.objectContaining({ status: 'PENDING', idempotencyKey: 'sale-key-a' }),
       expect.objectContaining({ status: 'CONFLICT', idempotencyKey: 'conflict-key-a' }),
     ]));
+  });
+
+  it('rejects a stale fallback enqueue that races an account switch', async () => {
+    let staleEnqueue: Promise<unknown> | undefined;
+    let interceptRemoval = false;
+    let outbox: OutboxStore;
+    const storage = interceptingStorage((key) => {
+      if (!interceptRemoval || key !== 'pharmacystock:outbox:v1:operations') return;
+      interceptRemoval = false;
+      staleEnqueue = outbox.enqueue(pendingOperation('stale-sale-a', 'a'), 'user-a');
+    });
+    const scope = new OfflineSessionScope(storage);
+    outbox = new OutboxStore(storage);
+    await scope.bindUser('user-b');
+    await outbox.enqueue(pendingOperation('sale-b', 'b'), 'user-b');
+    await scope.bindUser('user-a');
+    await outbox.enqueue(pendingOperation('sale-a', 'a'), 'user-a');
+
+    interceptRemoval = true;
+    await scope.bindUser('user-b');
+
+    expect(staleEnqueue).toBeDefined();
+    await expect(staleEnqueue).rejects.toBeInstanceOf(OutboxOwnerMismatchError);
+    expect(outbox.list()).toEqual([]);
+    const userBOutbox = new OutboxStore(storage);
+    await userBOutbox.ready();
+    expect(userBOutbox.list().map((operation) => operation.id)).toEqual(['sale-b']);
+
+    await scope.bindUser('user-a');
+    const userAOutbox = new OutboxStore(storage);
+    await userAOutbox.ready();
+    expect(userAOutbox.list().map((operation) => operation.id)).toEqual(['sale-a']);
   });
 
   it('serializes an enqueue concurrent with an account switch without loss or cross-user leakage', async () => {

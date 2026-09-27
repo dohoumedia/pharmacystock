@@ -3,6 +3,7 @@ import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxIdempotencyConflictError, OutboxStore } from './outbox';
 import { applySaleDraftMutation, cacheSaleQuote, getCachedSaleQuote, pendingSaleReservations, queueOfflineSale, queueOfflineSaleForCheckout, resolveSaleSubmissionIdentity } from './offlinePos';
+import { OfflineSessionScope } from './sessionScope';
 
 function memoryStorage(): KeyValueStorage {
   const values = new Map<string, string>();
@@ -90,6 +91,7 @@ describe('offline POS', () => {
 
   it('queues one pending sale with a stable idempotency key and receipt number', async () => {
     const storage = memoryStorage();
+    await new OfflineSessionScope(storage).bindUser('user-a');
     const outbox = new OutboxStore(storage);
     const quote = {
       total_amount: 1250,
@@ -122,7 +124,9 @@ describe('offline POS', () => {
   });
 
   it('counts same-device provisional reservations from pending sales only', async () => {
-    const outbox = new OutboxStore(memoryStorage());
+    const storage = memoryStorage();
+    await new OfflineSessionScope(storage).bindUser('user-a');
+    const outbox = new OutboxStore(storage);
     const quote = {
       total_amount: 2500,
       items: [{ product_id: 'product-a', batch_id: 'batch-a', quantity: 2, unit_price: 1250, line_total: 2500, expiry_date: '2027-01-01' }],
@@ -146,7 +150,9 @@ describe('offline POS', () => {
   });
 
   it('preserves the cart when a conflicting idempotency key is rejected', async () => {
-    const outbox = new OutboxStore(memoryStorage());
+    const storage = memoryStorage();
+    await new OfflineSessionScope(storage).bindUser('user-a');
+    const outbox = new OutboxStore(storage);
     const quote = {
       total_amount: 1250,
       items: [{ product_id: 'product-a', batch_id: 'batch-a', quantity: 1, unit_price: 1250, line_total: 1250, expiry_date: '2027-01-01' }],

@@ -33,6 +33,7 @@ function quote(quantity = 1) {
 describe('offline recovery scenarios', () => {
   it('queues an offline POS sale once and immediately reserves it against the cached stock snapshot', async () => {
     const storage = memoryStorage();
+    await new OfflineSessionScope(storage).bindUser('user-a');
     const localStore = new LocalStore(storage);
     const outbox = new OutboxStore(storage);
 

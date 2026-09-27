@@ -3,6 +3,7 @@ import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxStore } from './outbox';
 import { queueOfflineSale } from './offlinePos';
+import { OfflineSessionScope } from './sessionScope';
 import {
   cachePosCatalog,
   cachePosStockSnapshot,
@@ -65,6 +66,7 @@ describe('offline POS catalog', () => {
 
   it('subtracts pending same-device sales from the trusted stock snapshot', async () => {
     const storage = memoryStorage();
+    await new OfflineSessionScope(storage).bindUser('user-a');
     const store = new LocalStore(storage);
     const outbox = new OutboxStore(storage);
     cachePosStockSnapshot(store, 'org', 'branch', [balance('p1', 5)]);
