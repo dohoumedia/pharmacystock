@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OutboxIdempotencyConflictError, OutboxStore } from './outbox';
+import { OutboxIdempotencyConflictError, OutboxOwnerMismatchError, OutboxStore } from './outbox';
 import { ReplayPreparationError, SyncCoordinator } from './sync';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
@@ -67,6 +67,31 @@ describe('offline outbox', () => {
       createdAt: '2026-09-26T12:00:00.002Z',
     })).resolves.toMatchObject({ id: 'sale-3', idempotencyKey: 'distinct-key' });
     expect(outbox.list()).toHaveLength(2);
+  });
+
+  it('enforces the expected owner for fallback enqueue while preserving same-owner retries', async () => {
+    const storage = memoryStorage();
+    const scope = new OfflineSessionScope(storage);
+    const outbox = new OutboxStore(storage);
+    const operation = {
+      id: 'sale-owner-a',
+      kind: 'SALE',
+      organizationId: 'org-a',
+      idempotencyKey: 'owner-a-key',
+      payload: { saleNumber: 'SALE-A' },
+      createdAt: '2026-09-27T12:00:00.000Z',
+    };
+    await scope.bindUser('user-a');
+
+    await expect(outbox.enqueue(operation, 'user-b')).rejects.toBeInstanceOf(OutboxOwnerMismatchError);
+    expect(outbox.list()).toEqual([]);
+
+    await expect(outbox.enqueue(operation, 'user-a')).resolves.toMatchObject({ id: 'sale-owner-a' });
+    await expect(outbox.enqueue({ ...operation, id: 'same-owner-retry' }, 'user-a')).resolves.toMatchObject({
+      id: 'sale-owner-a',
+      idempotencyKey: 'owner-a-key',
+    });
+    expect(outbox.list()).toHaveLength(1);
   });
 
   it('notifies global status subscribers when another store instance changes the outbox', async () => {
