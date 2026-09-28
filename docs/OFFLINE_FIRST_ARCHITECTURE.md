@@ -46,6 +46,14 @@ that serialization boundary and fails without writing if ownership changed.
 Reads and replay preparation verify the same owner in their IndexedDB
 transaction, so a tab that loses a concurrent account switch clears its cached
 view and cannot inspect or replay the winning tab's active operation set.
+Offline POS enqueue also recalculates active same-owner provisional sale
+reservations and validates the requested quantities inside the same IndexedDB
+read/write transaction that inserts the intent. Concurrent tabs therefore
+serialize at the database boundary: an exact immutable retry returns the
+existing operation, while a distinct sale that would exceed the last trusted
+cached quantity is rejected without writing. Web/PWA checkout fails closed if
+cross-context atomic enqueue is unavailable; native retains its serialized
+single-runtime key/value transaction and owner check.
 Existing `pharmacystock:outbox:v1:operations` localStorage data is imported in a
 retry-safe migration before the legacy value is removed. Identical duplicates
 may collapse, but malformed or materially conflicting idempotency records keep

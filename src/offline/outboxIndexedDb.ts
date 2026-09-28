@@ -4,6 +4,7 @@ import {
   OutboxIdempotencyConflictError,
   OutboxOwnerMismatchError,
   type OutboxOperation,
+  type OutboxEnqueueValidator,
   type OutboxPersistence,
   type OutboxUpdate,
   type ScopeTransitionPoint,
@@ -300,6 +301,7 @@ async function migrateLegacyOutbox(database: IDBDatabase, legacyStorage: KeyValu
 }
 
 export class IndexedDbOutboxPersistence implements OutboxPersistence {
+  readonly supportsCrossContextAtomicity = true;
   private readonly database: Promise<IDBDatabase>;
 
   constructor(
@@ -348,7 +350,11 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
     return owner?.userId ?? null;
   }
 
-  async enqueue(operation: OutboxOperation, expectedOwnerId?: string): Promise<OutboxOperation> {
+  async enqueue(
+    operation: OutboxOperation,
+    expectedOwnerId?: string,
+    validate?: OutboxEnqueueValidator,
+  ): Promise<OutboxOperation> {
     const database = await this.database;
     const transaction = database.transaction([OPERATIONS_STORE, METADATA_STORE], 'readwrite');
     const completion = transactionDone(transaction);
@@ -370,6 +376,10 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
         }
         await completion;
         return duplicate;
+      }
+      if (validate) {
+        const operations = await requestResult(store.getAll()) as OutboxOperation[];
+        validate(operations);
       }
       store.add(operation);
       await completion;

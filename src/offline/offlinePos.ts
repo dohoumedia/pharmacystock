@@ -24,6 +24,22 @@ export type SaleSubmissionIdentity = {
   idempotencyKey: string;
 };
 
+export type OfflineStockReservationFailure =
+  | 'NO_STOCK_SNAPSHOT'
+  | 'LOCAL_INSUFFICIENT_STOCK'
+  | 'LOCAL_RESERVATION_STATE_INVALID';
+
+export class OfflineStockReservationError extends Error {
+  constructor(
+    readonly reason: OfflineStockReservationFailure,
+    readonly productId?: string,
+    readonly available?: number,
+  ) {
+    super(reason);
+    this.name = 'OfflineStockReservationError';
+  }
+}
+
 export function applySaleDraftMutation(submissionInFlight: boolean, mutation: () => void): boolean {
   if (submissionInFlight) return false;
   mutation();
@@ -97,17 +113,84 @@ export type QueueOfflineSaleInput = {
   notes?: string;
   quote: SaleQuote;
   quoteSyncedAt: string;
+  trustedAvailableByProduct: Readonly<Record<string, number>> | null;
+  requireCrossContextAtomicity: boolean;
   createdAt?: string;
 };
 
+const reservationStatuses = new Set<OutboxOperation['status']>(['PENDING', 'SYNCING', 'FAILED']);
+
+function collectSaleReservations(
+  operations: readonly OutboxOperation[],
+  organizationId: string,
+  branchId: string,
+  strict = false,
+) {
+  const reserved = new Map<string, number>();
+  for (const operation of operations) {
+    if (operation.kind !== 'SALE' || operation.organizationId !== organizationId || operation.branchId !== branchId) continue;
+    if (!reservationStatuses.has(operation.status)) continue;
+    const payload = operation.payload as Partial<OfflineSalePayload>;
+    if (!Array.isArray(payload.lines)) {
+      if (strict) throw new OfflineStockReservationError('LOCAL_RESERVATION_STATE_INVALID');
+      continue;
+    }
+    for (const line of payload.lines) {
+      const productId = line?.product_id;
+      const quantity = Number(line?.quantity);
+      if (typeof productId !== 'string' || !productId || !Number.isFinite(quantity) || quantity <= 0) {
+        if (strict) throw new OfflineStockReservationError('LOCAL_RESERVATION_STATE_INVALID');
+        continue;
+      }
+      reserved.set(productId, (reserved.get(productId) ?? 0) + quantity);
+    }
+  }
+  return reserved;
+}
+
+function validateSaleReservation(
+  operations: readonly OutboxOperation[],
+  input: QueueOfflineSaleInput,
+) {
+  if (!input.trustedAvailableByProduct) {
+    throw new OfflineStockReservationError('NO_STOCK_SNAPSHOT');
+  }
+
+  const requested = new Map<string, number>();
+  for (const line of input.lines) {
+    const quantity = Number(line.quantity);
+    if (!line.product_id || !Number.isFinite(quantity) || quantity <= 0) {
+      throw new OfflineStockReservationError('LOCAL_RESERVATION_STATE_INVALID', line.product_id);
+    }
+    requested.set(line.product_id, (requested.get(line.product_id) ?? 0) + quantity);
+  }
+
+  const reserved = collectSaleReservations(operations, input.organizationId, input.branchId, true);
+  for (const [productId, quantity] of requested) {
+    const snapshotQuantity = Number(input.trustedAvailableByProduct[productId] ?? 0);
+    if (!Number.isFinite(snapshotQuantity) || snapshotQuantity < 0) {
+      throw new OfflineStockReservationError('LOCAL_RESERVATION_STATE_INVALID', productId);
+    }
+    const remaining = Math.max(0, snapshotQuantity - (reserved.get(productId) ?? 0));
+    if (quantity > remaining) {
+      throw new OfflineStockReservationError('LOCAL_INSUFFICIENT_STOCK', productId, remaining);
+    }
+  }
+}
+
 export function queueOfflineSale(input: QueueOfflineSaleInput) {
   const createdAt = input.createdAt ?? new Date().toISOString();
+  const lines = input.lines.map((line) => ({ ...line }));
+  const payments = input.payments.map((payment) => ({ ...payment }));
+  const trustedAvailableByProduct = input.trustedAvailableByProduct
+    ? { ...input.trustedAvailableByProduct }
+    : null;
   const payload: OfflineSalePayload = {
     organizationId: input.organizationId,
     branchId: input.branchId,
     saleNumber: input.saleNumber,
-    lines: input.lines,
-    payments: input.payments,
+    lines,
+    payments,
     customerId: input.customerId ?? null,
     notes: input.notes,
     localReceiptNumber: input.saleNumber,
@@ -123,7 +206,15 @@ export function queueOfflineSale(input: QueueOfflineSaleInput) {
     idempotencyKey: input.idempotencyKey,
     payload,
     createdAt,
-  }, input.userId);
+  }, input.userId, {
+    validate: (operations) => validateSaleReservation(operations, {
+      ...input,
+      lines,
+      payments,
+      trustedAvailableByProduct,
+    }),
+    requireCrossContextAtomicity: input.requireCrossContextAtomicity,
+  });
 }
 
 export async function queueOfflineSaleForCheckout(
@@ -136,14 +227,7 @@ export async function queueOfflineSaleForCheckout(
 }
 
 export function pendingSaleReservations(outbox: OutboxStore, organizationId: string, branchId: string) {
-  const reserved = new Map<string, number>();
-  for (const operation of outbox.list()) {
-    if (operation.kind !== 'SALE' || operation.organizationId !== organizationId || operation.branchId !== branchId) continue;
-    if (!['PENDING', 'SYNCING', 'FAILED'].includes(operation.status)) continue;
-    const payload = operation.payload as OfflineSalePayload;
-    for (const line of payload.lines) reserved.set(line.product_id, (reserved.get(line.product_id) ?? 0) + line.quantity);
-  }
-  return reserved;
+  return collectSaleReservations(outbox.list(), organizationId, branchId);
 }
 
 function classifySaleError(error: unknown): ReplayResult {

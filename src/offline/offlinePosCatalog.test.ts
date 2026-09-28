@@ -94,6 +94,8 @@ describe('offline POS catalog', () => {
         ],
       },
       quoteSyncedAt: '2026-08-23T18:00:00.000Z',
+      trustedAvailableByProduct: { p1: 5 },
+      requireCrossContextAtomicity: false,
     });
 
     expect(

@@ -109,6 +109,8 @@ describe('offline POS', () => {
       idempotencyKey: 'sale:branch:offline-001',
       quote,
       quoteSyncedAt: '2026-08-23T18:00:00.000Z',
+      trustedAvailableByProduct: { 'product-a': 1 },
+      requireCrossContextAtomicity: false,
       createdAt: '2026-08-23T18:05:00.000Z',
     };
 
@@ -143,6 +145,8 @@ describe('offline POS', () => {
       idempotencyKey: 'sale:branch:offline-001',
       quote,
       quoteSyncedAt: '2026-08-23T18:00:00.000Z',
+      trustedAvailableByProduct: { 'product-a': 2 },
+      requireCrossContextAtomicity: false,
     });
 
     const reservations = pendingSaleReservations(outbox, 'org', 'branch');
@@ -168,6 +172,8 @@ describe('offline POS', () => {
       idempotencyKey: 'sale:branch:shared',
       quote,
       quoteSyncedAt: '2026-09-26T12:00:00.000Z',
+      trustedAvailableByProduct: { 'product-a': 1 },
+      requireCrossContextAtomicity: false,
       createdAt: '2026-09-26T12:01:00.000Z',
     };
     await queueOfflineSale(original);
