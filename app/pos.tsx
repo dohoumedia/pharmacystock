@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { randomUUID } from 'expo-crypto';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Alert, Button, IconButton, PageHeader, Stack, StatusBadge, Surface, TextField } from '@/components/ui';
@@ -11,9 +11,9 @@ import { useAuth } from '@/providers/AuthProvider';
 import { loadCustomers, type Customer } from '@/services/coreCompletion';
 import { loadInventoryBalances } from '@/services/inventory';
 import { completeSale, loadSaleItems, loadSales, quoteSale, refundSale, searchPosProducts, type CartLine, type PosProduct, type Sale, type SaleItem } from '@/services/sales';
-import { applySaleDraftMutation, cacheSaleQuote, createOfflinePosStores, getCachedSaleQuote, queueOfflineSaleForCheckout, replayPendingSales, resolveSaleSubmissionIdentity, type SaleSubmissionIdentity } from '@/offline/offlinePos';
-import { OutboxIdempotencyConflictError, OutboxOwnerMismatchError } from '@/offline/outbox';
-import { cachePosStockSnapshot, getCachedPosCatalog, getCachedPosStock, getOfflineAvailableQuantity, mergePosCatalog, searchCachedPosProducts, validateOfflineCartAgainstSnapshot } from '@/offline/offlinePosCatalog';
+import { applySaleDraftMutation, cacheSaleQuote, createOfflinePosStores, getCachedSaleQuote, OfflineStockReservationError, queueOfflineSaleForCheckout, replayPendingSales, resolveSaleSubmissionIdentity, type SaleSubmissionIdentity } from '@/offline/offlinePos';
+import { OutboxAtomicCoordinationUnavailableError, OutboxIdempotencyConflictError, OutboxOwnerMismatchError } from '@/offline/outbox';
+import { cachePosStockSnapshot, getCachedPosCatalog, getCachedPosStock, getOfflineAvailableQuantity, mergePosCatalog, searchCachedPosProducts } from '@/offline/offlinePosCatalog';
 import { formatPosCurrency, formatPosDate, posStatusTranslationKey } from '@/utils/posPresentation';
 import { isPosProductSelected, isPosSaleActionDisabled, posChoiceVisualState, posErrorTranslationKey, posSyncTone } from '@/utils/posVisualState';
 import { errorPresentationKey } from '@/utils/errorPresentation';
@@ -72,7 +72,87 @@ export default function PosScreen() {
   const addProduct = (product: PosProduct) => applySaleDraftMutation(saleSubmissionInFlight.current, () => { if (!isOnline) { const available = offlineAvailable(product.id); const inCart = cart.find((row) => row.product_id === product.id)?.quantity ?? 0; if (available === null) { setError(t('pos.noOfflineStockSnapshot')); return; } if (inCart + 1 > available) { setError(t('pos.offlineStockAvailable', { count: available })); return; } } setCart((current) => { const existing = current.find((row) => row.product_id === product.id); return existing ? current.map((row) => row.product_id === product.id ? { ...row, quantity: row.quantity + 1 } : row) : [...current, { product_id: product.id, quantity: 1, product }]; }); });
   const setQuantity = (productId: string, value: string) => applySaleDraftMutation(saleSubmissionInFlight.current, () => { const quantity = Number(value); if (!Number.isFinite(quantity) || quantity <= 0) return; if (!isOnline) { const available = offlineAvailable(productId); if (available === null || quantity > available) { setError(t('pos.offlineQuantityExceeded', { count: available ?? 0 })); return; } } setCart((current) => current.map((row) => row.product_id === productId ? { ...row, quantity } : row)); });
   const removeProduct = (productId: string) => applySaleDraftMutation(saleSubmissionInFlight.current, () => setCart((current) => current.filter((row) => row.product_id !== productId)));
-  const submitSale = async () => { if (saleSubmissionInFlight.current || !organizationId || !branchId || !userId || !lines.length || displayTotal <= 0) return; saleSubmissionInFlight.current = true; setBusy(true); setError(null); setMessage(null); try { const payments = [{ method: paymentMethod, amount: displayTotal }]; const immutableContent = { organizationId, branchId, lines, payments, customerId: selectedCustomerId }; const submission = resolveSaleSubmissionIdentity({ branchId, immutableContent, previous: saleSubmissionRef.current, createUuid: randomUUID }); saleSubmissionRef.current = submission; if (!isOnline) { await offlineStores.outbox.refresh(userId); const stockCheck = validateOfflineCartAgainstSnapshot({ store: offlineStores.localStore, outbox: offlineStores.outbox, organizationId, branchId, lines }); if (!stockCheck.ok) throw new Error(stockCheck.reason === 'NO_STOCK_SNAPSHOT' ? t('pos.noOfflineStockSnapshot') : t('pos.insufficientStock')); const cached = getCachedSaleQuote(offlineStores.localStore, organizationId, branchId, lines); if (!cached || !quoteSyncedAt) throw new Error(t('pos.offlineQuoteRequired')); await queueOfflineSaleForCheckout({ outbox: offlineStores.outbox, userId, organizationId, branchId, saleNumber: submission.saleNumber, lines, payments, idempotencyKey: submission.idempotencyKey, customerId: selectedCustomerId, quote: cached.data, quoteSyncedAt: cached.syncedAt }, () => { setCart([]); setSelectedCustomerId(null); saleSubmissionRef.current = null; }); await refreshOutboxState(); setMessage(t('pos.saleSavedPending', { saleNumber: submission.saleNumber })); return; } const saleId = await completeSale({ organizationId, branchId, saleNumber: submission.saleNumber, lines, payments, idempotencyKey: submission.idempotencyKey, customerId: selectedCustomerId }); setCart([]); setSelectedCustomerId(null); saleSubmissionRef.current = null; setMessage(`${t('pos.saleComplete')} · ${saleId.slice(0, 8)}`); await refreshSales(); } catch (cause) { const message = cause instanceof Error ? cause.message : ''; const offlineMessages = [t('pos.noOfflineStockSnapshot'), t('pos.insufficientStock'), t('pos.offlineQuoteRequired')]; if (offlineMessages.includes(message)) setError(message); else if (cause instanceof OutboxIdempotencyConflictError) { saleSubmissionRef.current = null; setError(t('pos.saleQueueConflict')); } else { setPriceBlocked(posErrorTranslationKey(cause) === 'pos.sellingPriceRequired'); presentServerError(cause); } } finally { saleSubmissionInFlight.current = false; setBusy(false); } };
+  const submitSale = async () => {
+    if (saleSubmissionInFlight.current || !organizationId || !branchId || !userId || !lines.length || displayTotal <= 0) return;
+    saleSubmissionInFlight.current = true;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const payments = [{ method: paymentMethod, amount: displayTotal }];
+      const immutableContent = { organizationId, branchId, lines, payments, customerId: selectedCustomerId };
+      const submission = resolveSaleSubmissionIdentity({
+        branchId,
+        immutableContent,
+        previous: saleSubmissionRef.current,
+        createUuid: randomUUID,
+      });
+      saleSubmissionRef.current = submission;
+      if (!isOnline) {
+        const trustedStock = getCachedPosStock(offlineStores.localStore, organizationId, branchId);
+        const cached = getCachedSaleQuote(offlineStores.localStore, organizationId, branchId, lines);
+        if (!cached || !quoteSyncedAt) throw new Error(t('pos.offlineQuoteRequired'));
+        await queueOfflineSaleForCheckout({
+          outbox: offlineStores.outbox,
+          userId,
+          organizationId,
+          branchId,
+          saleNumber: submission.saleNumber,
+          lines,
+          payments,
+          idempotencyKey: submission.idempotencyKey,
+          customerId: selectedCustomerId,
+          quote: cached.data,
+          quoteSyncedAt: cached.syncedAt,
+          trustedAvailableByProduct: trustedStock?.data.productAvailable ?? null,
+          requireCrossContextAtomicity: Platform.OS === 'web',
+        }, () => {
+          setCart([]);
+          setSelectedCustomerId(null);
+          saleSubmissionRef.current = null;
+        });
+        await refreshOutboxState();
+        setMessage(t('pos.saleSavedPending', { saleNumber: submission.saleNumber }));
+        return;
+      }
+      const saleId = await completeSale({
+        organizationId,
+        branchId,
+        saleNumber: submission.saleNumber,
+        lines,
+        payments,
+        idempotencyKey: submission.idempotencyKey,
+        customerId: selectedCustomerId,
+      });
+      setCart([]);
+      setSelectedCustomerId(null);
+      saleSubmissionRef.current = null;
+      setMessage(`${t('pos.saleComplete')} · ${saleId.slice(0, 8)}`);
+      await refreshSales();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '';
+      const offlineMessages = [t('pos.offlineQuoteRequired')];
+      if (offlineMessages.includes(message)) setError(message);
+      else if (cause instanceof OfflineStockReservationError) {
+        setError(cause.reason === 'NO_STOCK_SNAPSHOT'
+          ? t('pos.noOfflineStockSnapshot')
+          : cause.reason === 'LOCAL_INSUFFICIENT_STOCK'
+            ? t('pos.insufficientStock')
+            : t('pos.offlineReservationUnavailable'));
+      } else if (cause instanceof OutboxAtomicCoordinationUnavailableError) {
+        setError(t('pos.offlineReservationUnavailable'));
+      } else if (cause instanceof OutboxIdempotencyConflictError) {
+        saleSubmissionRef.current = null;
+        setError(t('pos.saleQueueConflict'));
+      } else {
+        setPriceBlocked(posErrorTranslationKey(cause) === 'pos.sellingPriceRequired');
+        presentServerError(cause);
+      }
+    } finally {
+      saleSubmissionInFlight.current = false;
+      setBusy(false);
+    }
+  };
   const openSale = async (sale: Sale) => { if (organizationId && isOnline) { setSelectedSale(sale); setSaleItems(await loadSaleItems(organizationId, sale.id)); } };
   const submitRefund = async () => { const firstItem = saleItems[0]; const quantity = Number(refundQuantity); if (!selectedSale || !firstItem || !refundReason.trim() || !isOnline || !Number.isFinite(quantity) || quantity <= 0) return; setBusy(true); setError(null); try { const stamp = Date.now(); await refundSale({ saleId: selectedSale.id, refundNumber: `REF-${stamp}`, items: [{ sale_item_id: firstItem.id, quantity }], idempotencyKey: `refund:${selectedSale.id}:${stamp}`, reason: refundReason }); setMessage(t('pos.refund')); setSelectedSale(null); setSaleItems([]); setRefundReason(''); await refreshSales(); } catch (cause) { presentServerError(cause); } finally { setBusy(false); } };
 

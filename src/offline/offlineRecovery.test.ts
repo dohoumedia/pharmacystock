@@ -63,6 +63,8 @@ describe('offline recovery scenarios', () => {
       idempotencyKey: 'sale:branch-a:offline-001',
       quote: quote(2),
       quoteSyncedAt: '2026-09-20T12:00:00.000Z',
+      trustedAvailableByProduct: { 'product-a': 5 },
+      requireCrossContextAtomicity: false,
       createdAt: '2026-09-20T12:01:00.000Z',
     };
 

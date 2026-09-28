@@ -21,6 +21,13 @@ export type OutboxOperation<TPayload = unknown> = {
 
 export type OutboxUpdate = Partial<Omit<OutboxOperation, 'id' | 'idempotencyKey' | 'createdAt'>>;
 
+export type OutboxEnqueueValidator = (operations: readonly OutboxOperation[]) => void;
+
+export type OutboxEnqueueOptions = {
+  validate?: OutboxEnqueueValidator;
+  requireCrossContextAtomicity?: boolean;
+};
+
 export type ScopeTransitionPoint =
   | 'after-owner-check'
   | 'after-vault'
@@ -47,10 +54,24 @@ export class OutboxIdempotencyConflictError extends Error {
   }
 }
 
+export class OutboxAtomicCoordinationUnavailableError extends Error {
+  readonly code = 'OUTBOX_ATOMIC_COORDINATION_UNAVAILABLE';
+
+  constructor() {
+    super('OUTBOX_ATOMIC_COORDINATION_UNAVAILABLE');
+    this.name = 'OutboxAtomicCoordinationUnavailableError';
+  }
+}
+
 export interface OutboxPersistence {
+  readonly supportsCrossContextAtomicity: boolean;
   list(expectedOwnerId?: string): Promise<OutboxOperation[]>;
   listSync?(): OutboxOperation[];
-  enqueue(operation: OutboxOperation, expectedOwnerId?: string): Promise<OutboxOperation>;
+  enqueue(
+    operation: OutboxOperation,
+    expectedOwnerId?: string,
+    validate?: OutboxEnqueueValidator,
+  ): Promise<OutboxOperation>;
   update(id: string, patch: OutboxUpdate, expectedOwnerId?: string): Promise<OutboxOperation | null>;
   owner(): Promise<string | null>;
   importLegacyVault(ownerId: string, raw: string): Promise<boolean>;
@@ -148,6 +169,7 @@ function operationsMatch(left: OutboxOperation, right: OutboxOperation): boolean
 }
 
 class KeyValueOutboxPersistence implements OutboxPersistence {
+  readonly supportsCrossContextAtomicity = false;
   private readonly legacyNamespaced;
   private observedOwnerId: string | null | undefined;
 
@@ -171,13 +193,18 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
     return this.observedOwnerId === state.ownerId ? sortOperations(state.operations) : [];
   }
 
-  enqueue(operation: OutboxOperation, expectedOwnerId?: string): Promise<OutboxOperation> {
+  enqueue(
+    operation: OutboxOperation,
+    expectedOwnerId?: string,
+    validate?: OutboxEnqueueValidator,
+  ): Promise<OutboxOperation> {
     return this.mutate((state) => {
       this.assertOwner(state, expectedOwnerId);
       const duplicate = state.operations.find((item) => item.idempotencyKey === operation.idempotencyKey);
       if (duplicate && !immutableOutboxContentMatches(duplicate, operation)) {
         throw new OutboxIdempotencyConflictError(operation.idempotencyKey);
       }
+      if (!duplicate) validate?.(state.operations);
       return {
         state: duplicate ? state : { ...state, operations: [...state.operations, operation] },
         result: duplicate ?? operation,
@@ -407,10 +434,14 @@ export class OutboxStore {
   async enqueue<TPayload>(
     operation: Omit<OutboxOperation<TPayload>, 'status' | 'attemptCount'>,
     expectedOwnerId?: string,
+    options: OutboxEnqueueOptions = {},
   ): Promise<OutboxOperation<TPayload>> {
     await this.initialization;
+    if (options.requireCrossContextAtomicity && !this.persistence.supportsCrossContextAtomicity) {
+      throw new OutboxAtomicCoordinationUnavailableError();
+    }
     const next: OutboxOperation<TPayload> = { ...operation, status: 'PENDING', attemptCount: 0 };
-    const persisted = await this.persistence.enqueue(next, expectedOwnerId);
+    const persisted = await this.persistence.enqueue(next, expectedOwnerId, options.validate);
     await this.changed(expectedOwnerId, true);
     return persisted as OutboxOperation<TPayload>;
   }
