@@ -5,6 +5,7 @@ import {
   OutboxOwnerMismatchError,
   type OutboxOperation,
   type OutboxEnqueueValidator,
+  type LegacyVaultImportOptions,
   type OutboxPersistence,
   type OutboxUpdate,
   type ScopeTransitionPoint,
@@ -232,7 +233,7 @@ async function migrateLegacyOutbox(database: IDBDatabase, legacyStorage: KeyValu
     for (const [idempotencyKey, group] of legacyGroups(legacy.operations)) {
       const source = group[0];
       if (!source) continue;
-      if (group.some((candidate) => !operationsMatch(candidate, source))) {
+      if (group.some((candidate) => !immutableOutboxContentMatches(candidate, source))) {
         migrationComplete = false;
         continue;
       }
@@ -257,7 +258,7 @@ async function migrateLegacyOutbox(database: IDBDatabase, legacyStorage: KeyValu
         duplicate = vaulted ? withoutOwner(vaulted) : undefined;
       }
       if (duplicate) {
-        if (!operationsMatch(duplicate, source)) {
+        if (!immutableOutboxContentMatches(duplicate, source)) {
           migrationComplete = false;
         } else {
           metadata.put({ key: markerKey, sourceFingerprint, importedId: duplicate.id } satisfies LegacyImportMarker);
@@ -418,7 +419,11 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
     }
   }
 
-  async importLegacyVault(ownerId: string, raw: string): Promise<boolean> {
+  async importLegacyVault(
+    ownerId: string,
+    raw: string,
+    options: LegacyVaultImportOptions,
+  ): Promise<boolean> {
     const database = await this.database;
     const transaction = database.transaction(
       [OPERATIONS_STORE, VAULT_OPERATIONS_STORE, METADATA_STORE],
@@ -432,24 +437,30 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
       const owner = await requestResult(metadata.get(OWNER_METADATA_KEY)) as OwnerMetadata | undefined;
       const quarantineKey = `${LEGACY_VAULT_QUARANTINE_PREFIX}${ownerId}`;
       const quarantine = await requestResult(metadata.get(quarantineKey)) as LegacyVaultQuarantine | undefined;
-      if (quarantine?.raw === raw) {
+      if (quarantine?.raw === raw && (!options.ownershipProven || quarantine.safeToDelete)) {
         await completion;
         return quarantine.safeToDelete;
       }
       const importIntoActive = owner?.userId === ownerId;
       const legacy = parseLegacyVault(raw);
-      if (importIntoActive && owner?.legacySnapshotOwner) {
+      if (!options.ownershipProven) {
         let safeToDelete = legacy.complete;
         for (const [idempotencyKey, group] of legacyGroups(legacy.operations)) {
           const source = group[0];
-          if (!source || group.some((candidate) => !operationsMatch(candidate, source))) {
+          if (!source || group.some((candidate) => !immutableOutboxContentMatches(candidate, source))) {
+            safeToDelete = false;
+            continue;
+          }
+          if (!importIntoActive || !owner?.legacySnapshotOwner) {
             safeToDelete = false;
             continue;
           }
           const existing = await requestResult(
             operations.index(IDEMPOTENCY_INDEX).get(idempotencyKey),
           ) as OutboxOperation | undefined;
-          if (!existing || !operationsMatch(existing, resetInterruptedReplay(source))) safeToDelete = false;
+          if (!existing || !immutableOutboxContentMatches(existing, resetInterruptedReplay(source))) {
+            safeToDelete = false;
+          }
         }
         metadata.put({
           key: quarantineKey,
@@ -458,7 +469,7 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
           quarantinedAt: new Date().toISOString(),
           reason: safeToDelete
             ? 'CURRENT_OWNER_LEGACY_VAULT_IS_REDUNDANT'
-            : 'CURRENT_OWNER_LEGACY_VAULT_IS_AMBIGUOUS',
+            : 'LEGACY_VAULT_OWNERSHIP_UNPROVEN',
         });
         await completion;
         return safeToDelete;
@@ -468,7 +479,7 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
       for (const [idempotencyKey, group] of legacyGroups(legacy.operations)) {
         const source = group[0];
         if (!source) continue;
-        if (group.some((candidate) => !operationsMatch(candidate, source))) {
+        if (group.some((candidate) => !immutableOutboxContentMatches(candidate, source))) {
           migrationComplete = false;
           continue;
         }
@@ -494,7 +505,7 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
           existing = vaulted ? withoutOwner(vaulted) : undefined;
         }
         if (existing) {
-          if (!operationsMatch(existing, restored)) {
+          if (!immutableOutboxContentMatches(existing, restored)) {
             migrationComplete = false;
           } else {
             metadata.put({ key: markerKey, sourceFingerprint, importedId: existing.id } satisfies LegacyImportMarker);
@@ -515,6 +526,17 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
         } satisfies LegacyImportMarker);
       }
 
+      if (migrationComplete) {
+        metadata.delete(quarantineKey);
+      } else {
+        metadata.put({
+          key: quarantineKey,
+          raw,
+          safeToDelete: false,
+          quarantinedAt: new Date().toISOString(),
+          reason: 'LEGACY_VAULT_MALFORMED_OR_IMMUTABLE_CONFLICT',
+        });
+      }
       await completion;
       return migrationComplete;
     } catch (error) {

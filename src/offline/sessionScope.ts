@@ -37,8 +37,10 @@ export class OfflineSessionScope {
 
   private async performBind(userId: string | null): Promise<void> {
     let previousUserId = await this.outbox.owner();
-    if (previousUserId) await this.migrateLegacyVault(previousUserId);
-    if (userId && userId !== previousUserId) await this.migrateLegacyVault(userId);
+    // Only the authenticated target user proves ownership of a legacy per-user
+    // vault. Never inspect or recover the previous local owner while another
+    // account is binding.
+    if (userId) await this.migrateLegacyVault(userId);
     previousUserId = await this.outbox.owner();
     let attempts = 0;
     while (previousUserId !== userId) {
@@ -61,8 +63,15 @@ export class OfflineSessionScope {
     const vaultKey = `vault:${userId}`;
     const legacyVault = this.scopeStorage.get(vaultKey);
     if (!legacyVault) return;
-    const imported = await this.outbox.importLegacyVault(userId, legacyVault);
-    if (imported && this.scopeStorage.get(vaultKey) === legacyVault) this.scopeStorage.remove(vaultKey);
+    const imported = await this.outbox.importLegacyVault(userId, legacyVault, { ownershipProven: true });
+    if (imported && this.scopeStorage.get(vaultKey) === legacyVault) {
+      try {
+        this.scopeStorage.remove(vaultKey);
+      } catch {
+        // Recovery is already durable. Retaining the legacy source makes the
+        // cleanup retryable without turning a committed recovery into failure.
+      }
+    }
   }
 
   replayScope(): OfflineReplayScope {
