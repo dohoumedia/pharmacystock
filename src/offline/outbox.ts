@@ -99,6 +99,11 @@ export type OutboxStoreOptions = {
   transitionHook?: (point: ScopeTransitionPoint) => void;
 };
 
+type ChangedOptions = {
+  tolerateCommittedOwnerChange?: boolean;
+  tolerateRefreshFailure?: boolean;
+};
+
 const KEY = 'operations';
 const NAMESPACE = 'pharmacystock:outbox:v1';
 const KEY_VALUE_STATE_KEY = 'pharmacystock:outbox:v2:key-value-state';
@@ -442,7 +447,13 @@ export class OutboxStore {
     }
     const next: OutboxOperation<TPayload> = { ...operation, status: 'PENDING', attemptCount: 0 };
     const persisted = await this.persistence.enqueue(next, expectedOwnerId, options.validate);
-    await this.changed(expectedOwnerId, true);
+    // Persistence has committed at this point. Cache refresh and notifications
+    // are best-effort bookkeeping and must not turn durable success into a
+    // caller-visible enqueue failure.
+    await this.changed(expectedOwnerId, {
+      tolerateCommittedOwnerChange: true,
+      tolerateRefreshFailure: true,
+    });
     return persisted as OutboxOperation<TPayload>;
   }
 
@@ -520,28 +531,50 @@ export class OutboxStore {
     this.operations = await this.persistence.list(expectedOwnerId);
   }
 
-  private async changed(expectedOwnerId?: string, tolerateCommittedOwnerChange = false): Promise<void> {
+  private async changed(expectedOwnerId?: string, options: ChangedOptions = {}): Promise<void> {
     try {
       await this.load(expectedOwnerId);
     } catch (error) {
-      if (!(error instanceof OutboxOwnerMismatchError)) throw error;
-      // Enqueue durability wins once its transaction commits: callers may
-      // clear the cart even if another tab immediately switches owners and
-      // vaults the operation. Replay updates do not tolerate this condition,
-      // so their handler stops before another server call can begin.
-      this.operations = [];
-      if (!tolerateCommittedOwnerChange) throw error;
+      if (error instanceof OutboxOwnerMismatchError) {
+        // Enqueue durability wins once its transaction commits: callers may
+        // clear the cart even if another tab immediately switches owners and
+        // vaults the operation. Replay updates do not tolerate this condition,
+        // so their handler stops before another server call can begin.
+        this.operations = [];
+        if (!options.tolerateCommittedOwnerChange) throw error;
+      } else {
+        if (!options.tolerateRefreshFailure) throw error;
+        // A failed reload leaves ownership and active contents uncertain. Keep
+        // the in-memory view empty until a later explicit refresh succeeds.
+        this.operations = [];
+      }
     }
     if (this.channel) {
       this.notify();
-      this.channel.postMessage({ changed: true });
+      try {
+        this.channel.postMessage({ changed: true });
+      } catch {
+        // The durable mutation already committed; cross-tab notification is
+        // advisory and later reads will recover the authoritative state.
+      }
     } else {
-      for (const listener of fallbackListeners) listener();
+      notifyListeners(fallbackListeners);
     }
   }
 
   private notify(): void {
-    for (const listener of this.listeners) listener();
+    notifyListeners(this.listeners);
+  }
+}
+
+function notifyListeners(listeners: Iterable<() => void>): void {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch {
+      // Subscribers are observers. Their failure cannot change the outcome of
+      // a mutation that has already committed to durable persistence.
+    }
   }
 }
 

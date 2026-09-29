@@ -111,7 +111,12 @@ export default function PosScreen() {
           setSelectedCustomerId(null);
           saleSubmissionRef.current = null;
         });
-        await refreshOutboxState();
+        try {
+          await refreshOutboxState();
+        } catch {
+          // The sale intent is already durable and the cart has been cleared.
+          // A later subscription or explicit refresh will recover the count.
+        }
         setMessage(t('pos.saleSavedPending', { saleNumber: submission.saleNumber }));
         return;
       }

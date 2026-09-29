@@ -54,6 +54,10 @@ existing operation, while a distinct sale that would exceed the last trusted
 cached quantity is rejected without writing. Web/PWA checkout fails closed if
 cross-context atomic enqueue is unavailable; native retains its serialized
 single-runtime key/value transaction and owner check.
+The persistence transaction is the enqueue success boundary. Once that commit
+returns, cache refresh and local/cross-tab notifications are best-effort and
+cannot turn the durable result into a caller-visible failure. Persistence,
+owner, idempotency and reservation failures before commit still reject.
 Existing `pharmacystock:outbox:v1:operations` localStorage data is imported in a
 retry-safe migration before the legacy value is removed. Identical duplicates
 may collapse, but malformed or materially conflicting idempotency records keep
