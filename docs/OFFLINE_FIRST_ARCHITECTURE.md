@@ -65,16 +65,21 @@ the legacy source intact for safe retry/recovery. Pre-existing per-user session
 vaults are also imported before their user is restored, and late global legacy
 writes are routed to their recorded owner rather than whichever account is
 currently active. A current-user legacy vault is deleted only when every record
-is already active and identical; otherwise it remains quarantined in legacy
-storage so an interrupted old session transition cannot silently discard its
-only copy. Native and test environments retain the shared key/value-compatible
-adapter. That fallback stores the active owner, active operations, and per-owner
-vaults in one versioned record. All reads and mutations share one serialized
-queue, so an owner expectation is checked in the same commit boundary as an
-enqueue or update, and an account change replaces owner plus active/vaulted
-operations together. A stale operation either commits before the switch and is
-vaulted for its original owner, or runs after the switch and is rejected; it
-cannot be written into the new owner's active outbox.
+is already active with matching immutable content, or after authentication has
+proven that the named vault owner is the user being bound. Recovery retains the
+original idempotency key, resets interrupted `SYNCING` work to `PENDING`, and is
+idempotent across cleanup interruptions. Ownerless records, malformed data, and
+records that reuse an idempotency key for different immutable content remain
+quarantined; the client never guesses an owner or silently merges the conflict.
+Another authenticated user cannot inspect or recover that vault. Native and test
+environments retain the shared key/value-compatible adapter. That fallback
+stores the active owner, active operations, and per-owner vaults in one
+versioned record. All reads and mutations share one serialized queue, so an
+owner expectation is checked in the same commit boundary as an enqueue or
+update, and an account change replaces owner plus active/vaulted operations
+together. A stale operation either commits before the switch and is vaulted for
+its original owner, or runs after the switch and is rejected; it cannot be
+written into the new owner's active outbox.
 
 ## Read path
 1. Render last synchronized local data immediately.

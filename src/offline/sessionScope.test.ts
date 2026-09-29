@@ -240,7 +240,7 @@ describe('offline session scope', () => {
     expect(outbox.list()).toEqual([userAOperation]);
   });
 
-  it('retains an ambiguous current-owner legacy vault without replaying or deleting it', async () => {
+  it('keeps a legacy user vault inaccessible until authentication proves its owner', async () => {
     const factory = new IDBFactory();
     const storage = memoryStorage();
     const databaseName = 'session-stale-current-user-vault';
@@ -251,18 +251,15 @@ describe('offline session scope', () => {
 
     const scope = new OfflineSessionScope(storage, { indexedDB: factory, databaseName });
     const outbox = indexedOutbox(factory, storage, databaseName);
-    await scope.bindUser('user-a');
-    await outbox.refresh();
-
+    await outbox.ready();
     expect(await outbox.owner()).toBe('user-a');
     expect(outbox.list()).toEqual([]);
     expect(storage.getItem(vaultKey)).not.toBeNull();
 
-    await scope.bindUser('user-b');
     await scope.bindUser('user-a');
-    await outbox.refresh();
-    expect(outbox.list()).toEqual([]);
-    expect(storage.getItem(vaultKey)).not.toBeNull();
+    await outbox.refresh('user-a');
+    expect(outbox.list()).toEqual([staleOperation]);
+    expect(storage.getItem(vaultKey)).toBeNull();
   });
 
   it('removes a current-owner legacy vault only when every operation is already active and identical', async () => {

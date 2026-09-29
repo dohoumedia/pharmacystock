@@ -28,6 +28,10 @@ export type OutboxEnqueueOptions = {
   requireCrossContextAtomicity?: boolean;
 };
 
+export type LegacyVaultImportOptions = {
+  ownershipProven: boolean;
+};
+
 export type ScopeTransitionPoint =
   | 'after-owner-check'
   | 'after-vault'
@@ -74,7 +78,7 @@ export interface OutboxPersistence {
   ): Promise<OutboxOperation>;
   update(id: string, patch: OutboxUpdate, expectedOwnerId?: string): Promise<OutboxOperation | null>;
   owner(): Promise<string | null>;
-  importLegacyVault(ownerId: string, raw: string): Promise<boolean>;
+  importLegacyVault(ownerId: string, raw: string, options: LegacyVaultImportOptions): Promise<boolean>;
   transitionOwner(expectedOwnerId: string | null, targetOwnerId: string | null): Promise<void>;
   removeSynced(): Promise<void>;
   clear(): Promise<void>;
@@ -237,9 +241,14 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
     }).then(() => ownerId);
   }
 
-  importLegacyVault(ownerId: string, raw: string): Promise<boolean> {
+  importLegacyVault(
+    ownerId: string,
+    raw: string,
+    options: LegacyVaultImportOptions,
+  ): Promise<boolean> {
     let complete = false;
     return this.runExclusive(() => {
+      if (!options.ownershipProven) return;
       const imported = parseVault(raw);
       if (!imported) return;
       const state = this.readState();
@@ -251,9 +260,12 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
       for (const operation of imported.map(resetInterruptedReplay)) {
         const duplicateByKey = merged.find((item) => item.idempotencyKey === operation.idempotencyKey);
         const duplicateById = merged.find((item) => item.id === operation.id);
-        const duplicate = duplicateByKey ?? duplicateById;
-        if (duplicate) {
-          if (!operationsMatch(duplicate, operation)) return;
+        if (duplicateByKey) {
+          if (!immutableOutboxContentMatches(duplicateByKey, operation)) return;
+          continue;
+        }
+        if (duplicateById) {
+          if (!operationsMatch(duplicateById, operation)) return;
           continue;
         }
         merged.push(operation);
@@ -511,9 +523,13 @@ export class OutboxStore {
     await this.changed();
   }
 
-  async importLegacyVault(ownerId: string, raw: string): Promise<boolean> {
+  async importLegacyVault(
+    ownerId: string,
+    raw: string,
+    options: LegacyVaultImportOptions,
+  ): Promise<boolean> {
     await this.initialization;
-    const complete = await this.persistence.importLegacyVault(ownerId, raw);
+    const complete = await this.persistence.importLegacyVault(ownerId, raw, options);
     await this.changed();
     return complete;
   }
