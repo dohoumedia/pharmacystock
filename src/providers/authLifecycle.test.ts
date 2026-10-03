@@ -4,6 +4,7 @@ import { LocalStore } from '../offline/localStore';
 import { OutboxStore } from '../offline/outbox';
 import { OfflineSessionScope } from '../offline/sessionScope';
 import type { KeyValueStorage } from '../offline/storage';
+import { SyncCoordinator } from '../offline/sync';
 import { startAuthLifecycle, type AuthLifecycleClient } from './authLifecycle';
 
 function session(userId: string, accessToken = 'access-1'): Session {
@@ -41,6 +42,119 @@ function memoryStorage(): KeyValueStorage {
 }
 
 describe('authenticated session lifecycle', () => {
+  it('does not cancel reconnect replay when Supabase refreshes the same user token', async () => {
+    const storage = memoryStorage();
+    const scope = new OfflineSessionScope(storage);
+    const outbox = new OutboxStore(storage);
+    await scope.bindUser('user-a');
+    await outbox.enqueue({
+      id: 'sale-a',
+      kind: 'SALE',
+      organizationId: 'org-a',
+      idempotencyKey: 'stable-sale-key',
+      payload: {},
+      createdAt: '2026-09-29T12:00:00.000Z',
+    }, 'user-a');
+
+    const auth = fakeAuth(Promise.resolve({ data: { session: session('user-a') }, error: null }));
+    const commit = vi.fn();
+    const lifecycle = startAuthLifecycle(auth.client, {
+      commit,
+      bindUser: (userId) => scope.bindUser(userId),
+    });
+    await vi.waitFor(() => expect(commit).toHaveBeenCalled());
+
+    const replayScope = scope.replayScope();
+    const submit = vi.fn(async () => ({ status: 'SYNCED' as const, serverId: 'server-sale-a' }));
+    const coordinator = new SyncCoordinator(outbox, { SALE: submit }, {
+      expectedOwnerId: 'user-a',
+      canReplay: () => scope.isReplayScopeCurrent(replayScope),
+      beforeReplay: async () => {
+        auth.emit('TOKEN_REFRESHED', session('user-a', 'access-2'));
+        await vi.waitFor(() => expect(commit).toHaveBeenLastCalledWith(
+          expect.objectContaining({ access_token: 'access-2' }),
+          false,
+        ));
+        auth.emit('TOKEN_REFRESHED', session('user-a', 'access-3'));
+        await vi.waitFor(() => expect(commit).toHaveBeenLastCalledWith(
+          expect.objectContaining({ access_token: 'access-3' }),
+          false,
+        ));
+        expect(scope.replayScope()).toEqual(replayScope);
+      },
+    });
+
+    await expect(coordinator.replayPending()).resolves.toEqual({ synced: 1, conflicts: 0, failed: 0 });
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'stable-sale-key' }));
+    lifecycle.stop();
+  });
+
+  it('invalidates stale replay immediately on a real user switch without exposing the previous user outbox', async () => {
+    const storage = memoryStorage();
+    const scope = new OfflineSessionScope(storage);
+    const outbox = new OutboxStore(storage);
+    await scope.bindUser('user-a');
+    await outbox.enqueue({
+      id: 'intent-a',
+      kind: 'SALE',
+      organizationId: 'org-a',
+      idempotencyKey: 'intent-a',
+      payload: {},
+      createdAt: '2026-09-29T12:00:00.000Z',
+    }, 'user-a');
+
+    const auth = fakeAuth(Promise.resolve({ data: { session: session('user-a') }, error: null }));
+    const lifecycle = startAuthLifecycle(auth.client, {
+      commit: vi.fn(),
+      bindUser: (userId) => scope.bindUser(userId),
+    });
+    await vi.waitFor(() => expect(scope.replayScope().userId).toBe('user-a'));
+    const staleReplay = scope.replayScope();
+
+    auth.emit('SIGNED_IN', session('user-b'));
+    expect(scope.isReplayScopeCurrent(staleReplay)).toBe(false);
+    await vi.waitFor(async () => {
+      await outbox.refresh('user-b');
+      expect(outbox.list()).toEqual([]);
+      expect(scope.replayScope().userId).toBe('user-b');
+    });
+
+    lifecycle.stop();
+  });
+
+  it('invalidates replay immediately on logout and leaves no active operations', async () => {
+    const storage = memoryStorage();
+    const scope = new OfflineSessionScope(storage);
+    const outbox = new OutboxStore(storage);
+    await scope.bindUser('user-a');
+    await outbox.enqueue({
+      id: 'intent-a',
+      kind: 'SALE',
+      organizationId: 'org-a',
+      idempotencyKey: 'intent-a',
+      payload: {},
+      createdAt: '2026-09-29T12:00:00.000Z',
+    }, 'user-a');
+
+    const auth = fakeAuth(Promise.resolve({ data: { session: session('user-a') }, error: null }));
+    const lifecycle = startAuthLifecycle(auth.client, {
+      commit: vi.fn(),
+      bindUser: (userId) => scope.bindUser(userId),
+    });
+    await vi.waitFor(() => expect(scope.replayScope().userId).toBe('user-a'));
+    const staleReplay = scope.replayScope();
+
+    auth.emit('SIGNED_OUT', null);
+    expect(scope.isReplayScopeCurrent(staleReplay)).toBe(false);
+    await vi.waitFor(async () => {
+      await outbox.refresh();
+      expect(await outbox.owner()).toBeNull();
+      expect(outbox.list()).toEqual([]);
+    });
+
+    lifecycle.stop();
+  });
+
   it('keeps sign-in through route changes, refresh, reload, sign-out, and sign-in again', async () => {
     const commits: { userId: string | null; loading: boolean; token?: string }[] = [];
     const bindUser = vi.fn();

@@ -58,6 +58,23 @@ async function seedScopedState(storage: KeyValueStorage) {
 }
 
 describe('offline session scope', () => {
+  it('preserves replay generation across repeated binds for the same authenticated user', async () => {
+    const storage = memoryStorage();
+    const scope = new OfflineSessionScope(storage);
+    await scope.bindUser('user-a');
+    const replayScope = scope.replayScope();
+
+    await Promise.all([
+      scope.bindUser('user-a'),
+      scope.bindUser('user-a'),
+      scope.bindUser('user-a'),
+    ]);
+
+    expect(scope.replayScope()).toEqual(replayScope);
+    expect(scope.isReplayScopeCurrent(replayScope)).toBe(true);
+    expect(await new OutboxStore(storage).owner()).toBe('user-a');
+  });
+
   it('clears cached replica data on sign-out while restoring unsynced intents for the same user', async () => {
     const storage = memoryStorage();
     const scope = new OfflineSessionScope(storage);
