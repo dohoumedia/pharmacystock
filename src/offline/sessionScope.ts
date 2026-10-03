@@ -11,6 +11,8 @@ export type OfflineReplayScope = {
   generation: number;
 };
 
+type BindingState = 'idle' | 'pending' | 'failed';
+
 export class OfflineSessionScope {
   private readonly scopeStorage;
   private readonly localStore: LocalStore;
@@ -19,6 +21,8 @@ export class OfflineSessionScope {
   private activeUserId: string | null = null;
   private requestedUserId: string | null = null;
   private binding = Promise.resolve();
+  private bindingState: BindingState = 'idle';
+  private hasBound = false;
 
   constructor(storage?: KeyValueStorage, outboxOptions: OutboxStoreOptions = {}) {
     this.scopeStorage = createNamespacedStorage('pharmacystock:offline-scope:v1', storage);
@@ -27,12 +31,33 @@ export class OfflineSessionScope {
   }
 
   bindUser(userId: string | null): Promise<void> {
+    const identityChanged = userId !== this.requestedUserId;
+    if (!identityChanged && this.bindingState === 'pending') return this.binding;
+
+    if (identityChanged || !this.hasBound) {
+      // Invalidate any in-flight replay immediately when establishing the
+      // initial scope or crossing a real account boundary. Same-user session
+      // replacement keeps the generation but still revalidates durable owner
+      // state in case another tab changed it.
+      this.generation += 1;
+    }
     this.requestedUserId = userId;
-    // Invalidate any in-flight replay immediately, before the durable account
-    // boundary work completes.
-    this.generation += 1;
-    this.binding = this.binding.catch(() => undefined).then(() => this.performBind(userId));
-    return this.binding;
+    this.bindingState = 'pending';
+    const pending = this.binding.catch(() => undefined).then(() => this.performBind(userId));
+    let tracked: Promise<void>;
+    tracked = pending.then(
+      () => {
+        if (this.binding !== tracked) return;
+        this.bindingState = 'idle';
+        this.hasBound = true;
+      },
+      (error) => {
+        if (this.binding === tracked) this.bindingState = 'failed';
+        throw error;
+      },
+    );
+    this.binding = tracked;
+    return tracked;
   }
 
   private async performBind(userId: string | null): Promise<void> {
