@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OutboxIdempotencyConflictError, OutboxOwnerMismatchError, OutboxStore } from './outbox';
 import { ReplayPreparationError, SyncCoordinator } from './sync';
 import { OfflineSessionScope } from './sessionScope';
@@ -272,6 +272,66 @@ describe('offline outbox', () => {
       idempotencyKey: 'pre-crash-key',
       lastErrorCode: 'INSUFFICIENT_STOCK',
     });
+  });
+
+  it('replays a young interrupted same-owner operation when the stale threshold elapses', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-08-23T18:05:00.000Z'));
+      const storage = memoryStorage();
+      const firstScope = new OfflineSessionScope(storage);
+      await firstScope.bindUser('user-a');
+      const interruptedOutbox = new OutboxStore(storage);
+      await interruptedOutbox.enqueue({
+        id: 'same-owner-restart',
+        kind: 'SALE',
+        organizationId: 'org',
+        idempotencyKey: 'same-owner-stable-key',
+        payload: {},
+        createdAt: '2026-08-23T18:01:00.000Z',
+      }, 'user-a');
+      await interruptedOutbox.update('same-owner-restart', {
+        status: 'SYNCING',
+        attemptCount: 1,
+        lastAttemptAt: new Date().toISOString(),
+      }, 'user-a');
+
+      const restoredScope = new OfflineSessionScope(storage);
+      await restoredScope.bindUser('user-a');
+      const replayScope = restoredScope.replayScope();
+      const restoredOutbox = new OutboxStore(storage);
+      const seen: string[] = [];
+      const coordinator = new SyncCoordinator(restoredOutbox, {
+        SALE: async (operation) => {
+          seen.push(operation.idempotencyKey);
+          return { status: 'SYNCED' };
+        },
+      }, {
+        canReplay: () => restoredScope.isReplayScopeCurrent(replayScope),
+        expectedOwnerId: 'user-a',
+      });
+
+      vi.setSystemTime(new Date('2026-08-23T18:06:00.000Z'));
+      await expect(coordinator.replayPending()).resolves.toEqual({ synced: 0, conflicts: 0, failed: 0 });
+      expect(restoredOutbox.list()[0]).toMatchObject({
+        status: 'SYNCING',
+        idempotencyKey: 'same-owner-stable-key',
+      });
+
+      await vi.advanceTimersByTimeAsync(60_001);
+
+      expect({
+        seen,
+        status: restoredOutbox.list()[0]?.status,
+        idempotencyKey: restoredOutbox.list()[0]?.idempotencyKey,
+      }).toEqual({
+        seen: ['same-owner-stable-key'],
+        status: 'SYNCED',
+        idempotencyKey: 'same-owner-stable-key',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('stops an in-flight replay when the authenticated scope changes', async () => {
