@@ -1,4 +1,5 @@
 import { IndexedDbOutboxPersistence } from './outboxIndexedDb';
+import { isRecoverableLegacyOperation, parseOutboxTimestamp, resetInterruptedReplay } from './outboxRecovery';
 import { createNamespacedStorage, getLocalStorage, type KeyValueStorage } from './storage';
 
 export type OutboxStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
@@ -23,12 +24,6 @@ export type OutboxOperation<TPayload = unknown> = {
 
 export type OutboxUpdate = Partial<Omit<OutboxOperation, 'id' | 'idempotencyKey' | 'createdAt'>>;
 
-function validTimestamp(value: unknown): number | null {
-  if (typeof value !== 'string' || value.trim() === '') return null;
-  const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) ? timestamp : null;
-}
-
 export function outboxReplayEligibleAt(
   operation: OutboxOperation,
   staleSyncingAfterMs = OUTBOX_STALE_SYNCING_AFTER_MS,
@@ -36,10 +31,10 @@ export function outboxReplayEligibleAt(
   if (operation.status === 'PENDING') return 0;
   if (operation.status === 'FAILED') {
     if (operation.nextAttemptAt === undefined) return 0;
-    return validTimestamp(operation.nextAttemptAt);
+    return parseOutboxTimestamp(operation.nextAttemptAt);
   }
   if (operation.status === 'SYNCING') {
-    const lastAttemptAt = validTimestamp(operation.lastAttemptAt);
+    const lastAttemptAt = parseOutboxTimestamp(operation.lastAttemptAt);
     return lastAttemptAt === null ? null : lastAttemptAt + staleSyncingAfterMs;
   }
   return null;
@@ -180,21 +175,11 @@ function parsePersisted(raw: string | null): OutboxOperation[] {
 function parseVault(raw: string): OutboxOperation[] | null {
   try {
     const parsed = JSON.parse(raw) as { operations?: unknown };
-    if (!Array.isArray(parsed.operations)) return null;
-    return sortOperations(parsed.operations as OutboxOperation[]);
+    if (!Array.isArray(parsed.operations) || !parsed.operations.every(isRecoverableLegacyOperation)) return null;
+    return sortOperations(parsed.operations);
   } catch {
     return null;
   }
-}
-
-function resetInterruptedReplay(operation: OutboxOperation): OutboxOperation {
-  if (operation.status !== 'SYNCING') return operation;
-  return {
-    ...operation,
-    status: 'PENDING',
-    nextAttemptAt: undefined,
-    lastErrorCode: undefined,
-  };
 }
 
 function operationsMatch(left: OutboxOperation, right: OutboxOperation): boolean {
