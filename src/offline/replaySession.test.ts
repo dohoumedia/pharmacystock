@@ -3,6 +3,33 @@ import { refreshSessionForReplay } from './offlinePos';
 import { ReplayPreparationError } from './sync';
 
 describe('replay session refresh', () => {
+  it('does not refresh a session belonging to a different initiating owner', async () => {
+    const refreshSession = vi.fn();
+    await expect(refreshSessionForReplay(new Date(), 60, {
+      getSession: async () => ({ data: { session: { expires_at: 1, user: { id: 'user-b' } } }, error: null }),
+      refreshSession,
+    }, () => true, 'user-a')).rejects.toMatchObject({ code: 'AUTH_SESSION_OWNER_CHANGED' });
+    expect(refreshSession).not.toHaveBeenCalled();
+  });
+
+  it('fences cancellation and changed identity after asynchronous session refresh', async () => {
+    let current = true;
+    await expect(refreshSessionForReplay(new Date(), 60, {
+      getSession: async () => ({ data: { session: { expires_at: 1, user: { id: 'user-a' } } }, error: null }),
+      refreshSession: async () => {
+        current = false;
+        return { data: { session: { user: { id: 'user-b' } } }, error: null };
+      },
+    }, () => current, 'user-a')).rejects.toMatchObject({ code: 'REPLAY_OBSOLETE' });
+  });
+
+  it('rejects a refreshed session whose owner changed even before the lifecycle event arrives', async () => {
+    await expect(refreshSessionForReplay(new Date(), 60, {
+      getSession: async () => ({ data: { session: { expires_at: 1, user: { id: 'user-a' } } }, error: null }),
+      refreshSession: async () => ({ data: { session: { user: { id: 'user-b' } } }, error: null }),
+    }, () => true, 'user-a')).rejects.toMatchObject({ code: 'AUTH_SESSION_OWNER_CHANGED' });
+  });
+
   it('does not regenerate or refresh anything when the session remains valid', async () => {
     const refreshSession = vi.fn();
     await refreshSessionForReplay(

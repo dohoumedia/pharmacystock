@@ -149,6 +149,44 @@ When connectivity returns:
 
 Retry transient network errors with backoff. Do not infinitely retry deterministic validation/authorization failures.
 
+The authenticated app shell owns one replay scheduler per active user. It
+subscribes to durable outbox changes and wakes at the earliest eligibility
+boundary: `PENDING` immediately, `FAILED` at `nextAttemptAt`, and `SYNCING`
+after the interrupted-replay stale threshold. A timer always refreshes and
+recomputes durable state before replay, including after application resume.
+All scheduled attempts still pass through `SyncCoordinator` and its replay
+lock. Lock contention uses a bounded recheck rather than a zero-delay loop.
+Same-user token refresh does not replace the scheduler; sign-out or a real
+user change stops the old owner's scheduler. A `SYNCING` record with missing
+or invalid `lastAttemptAt`, or a `FAILED` record with an invalid
+`nextAttemptAt`, remains unscheduled rather than being destructively reset.
+For compatibility, a `FAILED` record with no `nextAttemptAt` remains
+immediately retryable because it no longer represents an active submission.
+Only an absent/undefined retry timestamp counts as missing; empty strings and
+non-string values fail closed. Future deadlines retain their exact timing; the
+five-second contention recheck applies only to work already due after replay.
+When due and future work coexist, the next wake is the earlier of the bounded
+due-work recheck and every valid future FAILED/SYNCING eligibility boundary.
+All coordinator instances share a non-blocking runtime replay lock. It spans
+preparation, submission and durable result handling, and is released in `finally`
+only after replay settles, including errors. Replacing a scheduler or switching
+A → B → A cannot release an already-dispatched RPC's serialization boundary.
+Browser Web Locks additionally serialize across tabs; without Web Locks the
+runtime lock still prevents overlapping coordinators in the same JS runtime.
+Contention returns without enqueueing a stale callback; the scheduler refreshes
+durable owner/state on its next bounded attempt. Once the active invocation
+settles, restored eligible work retries with its unchanged idempotency key.
+An unresolved RPC deliberately retains the lock: a timer must not assume the
+server stopped processing it. Separate runtimes without Web Locks still rely
+on server idempotency, and real device/browser QA remains required.
+Each invocation captures its initiating owner/generation before asynchronous
+preparation, and scheduler stop invalidates its cancellation token. Preparation
+and submission check both fences without invalidating same-user token refresh.
+An auth-owner mismatch also aborts unchanged if it precedes the lifecycle event.
+POS observes newly durable `SYNCED` sales in its organization/branch and
+refreshes history through its existing cancellable read effect; it owns no
+replay coordinator.
+
 ## Conflict handling
 A conflict is not equivalent to a network failure.
 

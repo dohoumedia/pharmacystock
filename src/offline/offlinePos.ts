@@ -252,6 +252,8 @@ type ReplayPendingSalesOptions = {
   localStore?: LocalStore;
   now?: () => Date;
   refreshLeewaySeconds?: number;
+  expectedOwnerId?: string;
+  canReplay?: () => boolean;
 };
 
 type ReplayAuthClient = {
@@ -275,16 +277,31 @@ export async function refreshSessionForReplay(
   now = new Date(),
   refreshLeewaySeconds = 60,
   authClient?: ReplayAuthClient,
+  canReplay: () => boolean = () => true,
+  expectedOwnerId?: string,
 ) {
+  const assertCurrent = () => {
+    if (!canReplay()) throw new ReplayPreparationError('REPLAY_OBSOLETE', false);
+  };
+  assertCurrent();
   const auth = authClient ?? (await import('../lib/supabase')).supabase.auth;
+  assertCurrent();
   const { data, error } = await auth.getSession();
+  assertCurrent();
   if (error) throw preparationFailure('AUTH_SESSION_READ_FAILED', error);
   if (!data.session) throw new ReplayPreparationError('AUTH_SESSION_MISSING', false);
+  if (expectedOwnerId !== undefined && data.session.user.id !== expectedOwnerId) {
+    throw new ReplayPreparationError('AUTH_SESSION_OWNER_CHANGED', false);
+  }
 
   const expiresAt = data.session.expires_at;
   if (expiresAt && expiresAt * 1000 > now.getTime() + refreshLeewaySeconds * 1000) return data.session.user.id;
 
   const refreshed = await auth.refreshSession();
+  assertCurrent();
+  if (refreshed.data.session && expectedOwnerId !== undefined && refreshed.data.session.user.id !== expectedOwnerId) {
+    throw new ReplayPreparationError('AUTH_SESSION_OWNER_CHANGED', false);
+  }
   if (!refreshed.error && refreshed.data.session) return refreshed.data.session.user.id;
   throw preparationFailure('AUTH_SESSION_REFRESH_FAILED', refreshed.error);
 }
@@ -293,12 +310,25 @@ export async function replayPendingSales(
   outbox: OutboxStore,
   options: ReplayPendingSalesOptions = {},
 ) {
-  const { completeSale } = await import('../services/sales');
-  const localStore = options.localStore ?? new LocalStore();
-  const replayScope = await offlineSessionScope.verifiedReplayScope();
+  // Capture identity synchronously, before imports or any durable/auth await.
+  // This invocation can never adopt a later account's generation.
+  const replayScope = offlineSessionScope.replayScope();
+  const empty = { synced: 0, conflicts: 0, failed: 0 };
   let refreshedUserId: string | null = null;
+  let authScopeObsolete = false;
+  const canReplay = () => !authScopeObsolete && (options.canReplay?.() ?? true)
+    && offlineSessionScope.isReplayScopeCurrent(replayScope)
+    && (options.expectedOwnerId === undefined || options.expectedOwnerId === replayScope.userId)
+    && (refreshedUserId === null || refreshedUserId === replayScope.userId);
+  if (!canReplay() || !replayScope.userId) return empty;
+  const owner = await outbox.owner();
+  if (!canReplay() || owner !== replayScope.userId) return empty;
+  const { completeSale } = await import('../services/sales');
+  if (!canReplay()) return empty;
+  const localStore = options.localStore ?? new LocalStore();
   const coordinator = new SyncCoordinator(outbox, {
     SALE: async (operation: OutboxOperation) => {
+      if (!canReplay()) throw new ReplayPreparationError('REPLAY_OBSOLETE', false);
       const payload = operation.payload as OfflineSalePayload;
       try {
         const serverId = await completeSale({
@@ -318,14 +348,29 @@ export async function replayPendingSales(
     },
   }, {
     now: options.now,
-    canReplay: () => offlineSessionScope.isReplayScopeCurrent(replayScope)
-      && (refreshedUserId === null || refreshedUserId === replayScope.userId),
+    canReplay,
     beforeReplay: async () => {
-      refreshedUserId = await refreshSessionForReplay(options.now?.() ?? new Date(), options.refreshLeewaySeconds);
+      if (!canReplay()) return;
+      try {
+        refreshedUserId = await refreshSessionForReplay(
+          options.now?.() ?? new Date(), options.refreshLeewaySeconds,
+          undefined, canReplay, replayScope.userId ?? undefined,
+        );
+      } catch (error) {
+        if (error instanceof ReplayPreparationError && error.code === 'AUTH_SESSION_OWNER_CHANGED') {
+          // The auth account boundary may precede its lifecycle notification.
+          // Cancel this invocation without changing the old owner's intent.
+          authScopeObsolete = true;
+          return;
+        }
+        throw error;
+      }
+      if (!canReplay()) return;
       const [{ loadInventoryBalances }, { cachePosStockSnapshot }] = await Promise.all([
         import('../services/inventory'),
         import('./offlinePosCatalog'),
       ]);
+      if (!canReplay()) return;
       const scopes = new Map<string, { organizationId: string; branchId: string }>();
       for (const operation of outbox.pending(options.now?.() ?? new Date())) {
         if (operation.kind !== 'SALE' || !operation.branchId) continue;
@@ -335,8 +380,10 @@ export async function replayPendingSales(
         });
       }
       for (const scope of scopes.values()) {
+        if (!canReplay()) return;
         try {
           const balances = await loadInventoryBalances(scope.organizationId, scope.branchId);
+          if (!canReplay()) return;
           cachePosStockSnapshot(localStore, scope.organizationId, scope.branchId, balances);
         } catch (error) {
           throw preparationFailure(
@@ -346,7 +393,7 @@ export async function replayPendingSales(
         }
       }
     },
-    expectedOwnerId: replayScope.userId ?? undefined,
+    expectedOwnerId: replayScope.userId,
   });
   return coordinator.replayPending();
 }

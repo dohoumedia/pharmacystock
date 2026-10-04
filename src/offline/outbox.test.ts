@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { OutboxIdempotencyConflictError, OutboxOwnerMismatchError, OutboxStore } from './outbox';
 import { ReplayPreparationError, SyncCoordinator } from './sync';
+import { OutboxReplayScheduler } from './replayScheduler';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
 
@@ -274,6 +275,74 @@ describe('offline outbox', () => {
     });
   });
 
+  it('replays a young interrupted same-owner operation when the stale threshold elapses', async () => {
+    vi.useFakeTimers();
+    let scheduler: OutboxReplayScheduler | null = null;
+    try {
+      vi.setSystemTime(new Date('2026-08-23T18:05:00.000Z'));
+      const storage = memoryStorage();
+      const firstScope = new OfflineSessionScope(storage);
+      await firstScope.bindUser('user-a');
+      const interruptedOutbox = new OutboxStore(storage);
+      await interruptedOutbox.enqueue({
+        id: 'same-owner-restart',
+        kind: 'SALE',
+        organizationId: 'org',
+        idempotencyKey: 'same-owner-stable-key',
+        payload: {},
+        createdAt: '2026-08-23T18:01:00.000Z',
+      }, 'user-a');
+      await interruptedOutbox.update('same-owner-restart', {
+        status: 'SYNCING',
+        attemptCount: 1,
+        lastAttemptAt: new Date().toISOString(),
+      }, 'user-a');
+
+      const restoredScope = new OfflineSessionScope(storage);
+      await restoredScope.bindUser('user-a');
+      const replayScope = restoredScope.replayScope();
+      const restoredOutbox = new OutboxStore(storage);
+      const seen: string[] = [];
+      const coordinator = new SyncCoordinator(restoredOutbox, {
+        SALE: async (operation) => {
+          seen.push(operation.idempotencyKey);
+          return { status: 'SYNCED' };
+        },
+      }, {
+        canReplay: () => restoredScope.isReplayScopeCurrent(replayScope),
+        expectedOwnerId: 'user-a',
+      });
+      scheduler = new OutboxReplayScheduler(
+        restoredOutbox,
+        () => coordinator.replayPending(),
+        { expectedOwnerId: 'user-a' },
+      );
+
+      vi.setSystemTime(new Date('2026-08-23T18:06:00.000Z'));
+      scheduler.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(restoredOutbox.list()[0]).toMatchObject({
+        status: 'SYNCING',
+        idempotencyKey: 'same-owner-stable-key',
+      });
+
+      await vi.advanceTimersByTimeAsync(60_001);
+
+      expect({
+        seen,
+        status: restoredOutbox.list()[0]?.status,
+        idempotencyKey: restoredOutbox.list()[0]?.idempotencyKey,
+      }).toEqual({
+        seen: ['same-owner-stable-key'],
+        status: 'SYNCED',
+        idempotencyKey: 'same-owner-stable-key',
+      });
+    } finally {
+      scheduler?.stop();
+      vi.useRealTimers();
+    }
+  });
+
   it('stops an in-flight replay when the authenticated scope changes', async () => {
     const storage = memoryStorage();
     const sessionScope = new OfflineSessionScope(storage);
@@ -380,6 +449,51 @@ describe('offline outbox', () => {
       idempotencyKey: 'cross-tab-stable-key',
       serverId: 'server-cross-tab-1',
     });
+  });
+
+  it('retains browser Web Locks and releases runtime serialization on cross-tab contention', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    await outbox.enqueue({
+      id: 'web-lock', kind: 'SALE', organizationId: 'org',
+      idempotencyKey: 'web-lock-stable', payload: {}, createdAt: '2026-10-01T12:00:00.000Z',
+    });
+    let anotherTabHoldsLock = true;
+    const request = vi.fn(async (
+      _name: string, _options: { ifAvailable: true },
+      callback: (lock: object | null) => Promise<unknown>,
+    ) => callback(anotherTabHoldsLock ? null : {}));
+    vi.stubGlobal('navigator', { locks: { request } });
+    const submit = vi.fn(async () => ({ status: 'SYNCED' as const }));
+    try {
+      await expect(new SyncCoordinator(outbox, { SALE: submit }).replayPending())
+        .resolves.toEqual({ synced: 0, conflicts: 0, failed: 0 });
+      expect(request).toHaveBeenCalledWith('pharmacystock:offline-replay',
+        { ifAvailable: true }, expect.any(Function));
+      expect(submit).not.toHaveBeenCalled();
+      expect(outbox.list()[0]?.status).toBe('PENDING');
+      anotherTabHoldsLock = false;
+      await expect(new SyncCoordinator(outbox, { SALE: submit }).replayPending())
+        .resolves.toEqual({ synced: 1, conflicts: 0, failed: 0 });
+      expect(submit).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('releases shared runtime serialization when lock acquisition rejects', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    await outbox.enqueue({
+      id: 'lock-error', kind: 'SALE', organizationId: 'org',
+      idempotencyKey: 'lock-error-stable', payload: {}, createdAt: '2026-10-01T12:00:00.000Z',
+    });
+    const submit = vi.fn(async () => ({ status: 'SYNCED' as const }));
+    const lock = vi.fn(async () => { throw new Error('LOCK_UNAVAILABLE'); });
+    await expect(new SyncCoordinator(outbox, { SALE: submit }, { replayLock: lock }).replayPending())
+      .rejects.toThrow('LOCK_UNAVAILABLE');
+    await expect(new SyncCoordinator(outbox, { SALE: submit }).replayPending())
+      .resolves.toEqual({ synced: 1, conflicts: 0, failed: 0 });
+    expect(submit).toHaveBeenCalledTimes(1);
   });
 
 });
