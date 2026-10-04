@@ -64,13 +64,26 @@ may collapse, but malformed or materially conflicting idempotency records keep
 the legacy source intact for safe retry/recovery. Pre-existing per-user session
 vaults are also imported before their user is restored, and late global legacy
 writes are routed to their recorded owner rather than whichever account is
-currently active. A current-user legacy vault is deleted only when every record
-is already active with matching immutable content, or after authentication has
-proven that the named vault owner is the user being bound. Recovery retains the
-original idempotency key, resets interrupted `SYNCING` work to `PENDING`, and is
-idempotent across cleanup interruptions. Ownerless records, malformed data, and
-records that reuse an idempotency key for different immutable content remain
-quarantined; the client never guesses an owner or silently merges the conflict.
+currently active. A current-user legacy vault is deleted only after complete
+recovery (or verification of identical active records), with the unchanged source
+checked again before cleanup. Authentication proves the named vault owner; it
+does not substitute for envelope validation or a successful persistence commit.
+The key/value adapter validates every legacy envelope before sorting or merging;
+any malformed entry rejects the entire vault without a partial import. Current
+recovery supports branch-scoped `SALE` envelopes with nonblank identity/scope,
+an object payload, recognized status, valid creation/replay timestamps and a
+nonnegative safe-integer attempt count. Payload scope, when duplicated, must
+match the envelope. Sale lines, quantities and payments retain their existing
+domain validation. No missing identity, scope or timestamp is invented.
+Recovery retains the original idempotency key and is idempotent across cleanup
+interruptions. Both adapters use the replay eligibility timestamp parser to
+reset interrupted `SYNCING` work to `PENDING` only when `lastAttemptAt` is valid.
+Persisted owner-vault records with missing/invalid timing stay unchanged as
+non-replayable `SYNCING`, including after owner switches or restart. Malformed
+key/value legacy vaults retain their exact source instead of becoming active.
+Ownerless records and records that reuse an idempotency key for different
+immutable content remain quarantined; the client never guesses an owner or
+silently merges the conflict.
 Another authenticated user cannot inspect or recover that vault. Native and test
 environments retain the shared key/value-compatible adapter. That fallback
 stores the active owner, active operations, and per-owner vaults in one

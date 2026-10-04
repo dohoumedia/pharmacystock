@@ -1,4 +1,5 @@
 import type { KeyValueStorage } from './storage';
+import { resetInterruptedReplay } from './outboxRecovery';
 import {
   immutableOutboxContentMatches,
   OutboxIdempotencyConflictError,
@@ -129,11 +130,6 @@ function sortOperations(operations: OutboxOperation[]) {
 function withoutOwner(record: VaultedOperation): OutboxOperation {
   const { ownerId: _ownerId, ...operation } = record;
   return operation;
-}
-
-function resetInterruptedReplay(operation: OutboxOperation): OutboxOperation {
-  if (operation.status !== 'SYNCING') return operation;
-  return { ...operation, status: 'PENDING', nextAttemptAt: undefined, lastErrorCode: undefined };
 }
 
 async function openDatabase(factory: IDBFactory, databaseName: string): Promise<IDBDatabase> {
