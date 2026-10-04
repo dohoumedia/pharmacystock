@@ -15,9 +15,10 @@ function pendingOperation(id: string, user: string) {
     id,
     kind: 'SALE',
     organizationId: `org-${user}`,
+    branchId: `branch-${user}`,
     idempotencyKey: `key-${id}`,
     payload: { saleNumber: id },
-    createdAt: `2026-09-20T12:0${id.length}:00.000Z`,
+    createdAt: '2026-09-20T12:06:00.000Z',
   };
 }
 
@@ -30,15 +31,15 @@ function memoryStorage(): KeyValueStorage {
   };
 }
 
-function interceptingStorage(onRemove: (key: string) => void): KeyValueStorage {
+function interceptingStorage(onCommit: (key: string) => void): KeyValueStorage {
   const values = new Map<string, string>();
   return {
     getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, value),
-    removeItem: (key) => {
-      values.delete(key);
-      onRemove(key);
+    setItem: (key, value) => {
+      values.set(key, value);
+      onCommit(key);
     },
+    removeItem: (key) => { values.delete(key); },
   };
 }
 
@@ -174,11 +175,11 @@ describe('offline session scope', () => {
 
   it('rejects a stale fallback enqueue that races an account switch', async () => {
     let staleEnqueue: Promise<unknown> | undefined;
-    let interceptRemoval = false;
+    let interceptCommit = false;
     let outbox: OutboxStore;
     const storage = interceptingStorage((key) => {
-      if (!interceptRemoval || key !== 'pharmacystock:outbox:v1:operations') return;
-      interceptRemoval = false;
+      if (!interceptCommit || key !== 'pharmacystock:outbox:v2:key-value-state') return;
+      interceptCommit = false;
       staleEnqueue = outbox.enqueue(pendingOperation('stale-sale-a', 'a'), 'user-a');
     });
     const scope = new OfflineSessionScope(storage);
@@ -188,7 +189,7 @@ describe('offline session scope', () => {
     await scope.bindUser('user-a');
     await outbox.enqueue(pendingOperation('sale-a', 'a'), 'user-a');
 
-    interceptRemoval = true;
+    interceptCommit = true;
     await scope.bindUser('user-b');
 
     expect(staleEnqueue).toBeDefined();
