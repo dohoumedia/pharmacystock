@@ -1,6 +1,9 @@
 import type { PropsWithChildren } from 'react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState, Platform } from 'react-native';
+import { replayPendingSales } from '@/offline/offlinePos';
 import { OutboxStore, type OutboxOperation } from '@/offline/outbox';
+import { OutboxReplayScheduler } from '@/offline/replayScheduler';
 import { deriveSyncStatus, type SyncStatusSnapshot } from '@/offline/syncStatus';
 import { useConnectivity } from './ConnectivityProvider';
 import { useAuth } from './AuthProvider';
@@ -18,6 +21,14 @@ export function SyncStatusProvider({ children }: PropsWithChildren) {
   const { user, loading } = useAuth();
   const userId = user?.id ?? null;
   const [operations, setOperations] = useState<OutboxOperation[]>([]);
+  const replayScheduler = useMemo(() => userId ? new OutboxReplayScheduler(
+    outbox,
+    (context) => replayPendingSales(outbox, {
+      expectedOwnerId: context.expectedOwnerId,
+      canReplay: context.isCurrent,
+    }),
+    { expectedOwnerId: userId },
+  ) : null, [userId]);
   const refresh = useCallback(() => {
     void Promise.resolve().then(async () => {
       if (loading || !userId) {
@@ -38,6 +49,29 @@ export function SyncStatusProvider({ children }: PropsWithChildren) {
     refresh();
     return outbox.subscribe(refresh);
   }, [refresh]);
+
+  useEffect(() => {
+    if (loading || !replayScheduler || state !== 'online') return;
+    replayScheduler.start();
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') replayScheduler.wake();
+    });
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') replayScheduler.wake();
+    };
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+
+    return () => {
+      appStateSubscription.remove();
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+      replayScheduler.stop();
+    };
+  }, [loading, replayScheduler, state]);
 
   const value = useMemo(
     () => ({ ...deriveSyncStatus(state, operations), operations, refresh }),

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OutboxIdempotencyConflictError, OutboxOwnerMismatchError, OutboxStore } from './outbox';
 import { ReplayPreparationError, SyncCoordinator } from './sync';
+import { OutboxReplayScheduler } from './replayScheduler';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
 
@@ -276,6 +277,7 @@ describe('offline outbox', () => {
 
   it('replays a young interrupted same-owner operation when the stale threshold elapses', async () => {
     vi.useFakeTimers();
+    let scheduler: OutboxReplayScheduler | null = null;
     try {
       vi.setSystemTime(new Date('2026-08-23T18:05:00.000Z'));
       const storage = memoryStorage();
@@ -310,9 +312,15 @@ describe('offline outbox', () => {
         canReplay: () => restoredScope.isReplayScopeCurrent(replayScope),
         expectedOwnerId: 'user-a',
       });
+      scheduler = new OutboxReplayScheduler(
+        restoredOutbox,
+        () => coordinator.replayPending(),
+        { expectedOwnerId: 'user-a' },
+      );
 
       vi.setSystemTime(new Date('2026-08-23T18:06:00.000Z'));
-      await expect(coordinator.replayPending()).resolves.toEqual({ synced: 0, conflicts: 0, failed: 0 });
+      scheduler.start();
+      await vi.advanceTimersByTimeAsync(0);
       expect(restoredOutbox.list()[0]).toMatchObject({
         status: 'SYNCING',
         idempotencyKey: 'same-owner-stable-key',
@@ -330,6 +338,7 @@ describe('offline outbox', () => {
         idempotencyKey: 'same-owner-stable-key',
       });
     } finally {
+      scheduler?.stop();
       vi.useRealTimers();
     }
   });
@@ -440,6 +449,51 @@ describe('offline outbox', () => {
       idempotencyKey: 'cross-tab-stable-key',
       serverId: 'server-cross-tab-1',
     });
+  });
+
+  it('retains browser Web Locks and releases runtime serialization on cross-tab contention', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    await outbox.enqueue({
+      id: 'web-lock', kind: 'SALE', organizationId: 'org',
+      idempotencyKey: 'web-lock-stable', payload: {}, createdAt: '2026-10-01T12:00:00.000Z',
+    });
+    let anotherTabHoldsLock = true;
+    const request = vi.fn(async (
+      _name: string, _options: { ifAvailable: true },
+      callback: (lock: object | null) => Promise<unknown>,
+    ) => callback(anotherTabHoldsLock ? null : {}));
+    vi.stubGlobal('navigator', { locks: { request } });
+    const submit = vi.fn(async () => ({ status: 'SYNCED' as const }));
+    try {
+      await expect(new SyncCoordinator(outbox, { SALE: submit }).replayPending())
+        .resolves.toEqual({ synced: 0, conflicts: 0, failed: 0 });
+      expect(request).toHaveBeenCalledWith('pharmacystock:offline-replay',
+        { ifAvailable: true }, expect.any(Function));
+      expect(submit).not.toHaveBeenCalled();
+      expect(outbox.list()[0]?.status).toBe('PENDING');
+      anotherTabHoldsLock = false;
+      await expect(new SyncCoordinator(outbox, { SALE: submit }).replayPending())
+        .resolves.toEqual({ synced: 1, conflicts: 0, failed: 0 });
+      expect(submit).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('releases shared runtime serialization when lock acquisition rejects', async () => {
+    const outbox = new OutboxStore(memoryStorage());
+    await outbox.enqueue({
+      id: 'lock-error', kind: 'SALE', organizationId: 'org',
+      idempotencyKey: 'lock-error-stable', payload: {}, createdAt: '2026-10-01T12:00:00.000Z',
+    });
+    const submit = vi.fn(async () => ({ status: 'SYNCED' as const }));
+    const lock = vi.fn(async () => { throw new Error('LOCK_UNAVAILABLE'); });
+    await expect(new SyncCoordinator(outbox, { SALE: submit }, { replayLock: lock }).replayPending())
+      .rejects.toThrow('LOCK_UNAVAILABLE');
+    await expect(new SyncCoordinator(outbox, { SALE: submit }).replayPending())
+      .resolves.toEqual({ synced: 1, conflicts: 0, failed: 0 });
+    expect(submit).toHaveBeenCalledTimes(1);
   });
 
 });

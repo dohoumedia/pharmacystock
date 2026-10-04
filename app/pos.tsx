@@ -11,12 +11,13 @@ import { useAuth } from '@/providers/AuthProvider';
 import { loadCustomers, type Customer } from '@/services/coreCompletion';
 import { loadInventoryBalances } from '@/services/inventory';
 import { completeSale, loadSaleItems, loadSales, quoteSale, refundSale, searchPosProducts, type CartLine, type PosProduct, type Sale, type SaleItem } from '@/services/sales';
-import { applySaleDraftMutation, cacheSaleQuote, createOfflinePosStores, getCachedSaleQuote, OfflineStockReservationError, queueOfflineSaleForCheckout, replayPendingSales, resolveSaleSubmissionIdentity, type SaleSubmissionIdentity } from '@/offline/offlinePos';
+import { applySaleDraftMutation, cacheSaleQuote, createOfflinePosStores, getCachedSaleQuote, OfflineStockReservationError, queueOfflineSaleForCheckout, resolveSaleSubmissionIdentity, type SaleSubmissionIdentity } from '@/offline/offlinePos';
 import { OutboxAtomicCoordinationUnavailableError, OutboxIdempotencyConflictError, OutboxOwnerMismatchError } from '@/offline/outbox';
 import { cachePosStockSnapshot, getCachedPosCatalog, getCachedPosStock, getOfflineAvailableQuantity, mergePosCatalog, searchCachedPosProducts } from '@/offline/offlinePosCatalog';
 import { formatPosCurrency, formatPosDate, posStatusTranslationKey } from '@/utils/posPresentation';
 import { isPosProductSelected, isPosSaleActionDisabled, posChoiceVisualState, posErrorTranslationKey, posSyncTone } from '@/utils/posVisualState';
 import { errorPresentationKey } from '@/utils/errorPresentation';
+import { observeSyncedSales } from '@/offline/saleSyncObserver';
 
 type CartRow = CartLine & { product: PosProduct };
 type ChoiceTabProps = { label: string; selected: boolean; focused: boolean; disabled?: boolean; accessibilityLabel?: string; onFocus: () => void; onBlur: () => void; onPress: () => void };
@@ -46,6 +47,7 @@ export default function PosScreen() {
   const [sales, setSales] = useState<Sale[]>([]); const [selectedSale, setSelectedSale] = useState<Sale | null>(null); const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [refundReason, setRefundReason] = useState(''); const [refundQuantity, setRefundQuantity] = useState('1'); const [busy, setBusy] = useState(false);
   const [pendingCount, setPendingCount] = useState(0); const [conflictCount, setConflictCount] = useState(0);
+  const [salesSyncRevision, setSalesSyncRevision] = useState(0);
   const [error, setError] = useState<string | null>(null); const [message, setMessage] = useState<string | null>(null);
   const [priceBlocked, setPriceBlocked] = useState(false);
   const [focusedControl, setFocusedControl] = useState<string | null>(null);
@@ -60,13 +62,17 @@ export default function PosScreen() {
     setError(posKey ? t(posKey) : t(errorPresentationKey(cause)));
   };
 
-  useEffect(() => { if (!organizationId || !branchId || !canRead || !isOnline) return; let active = true; void loadSales(organizationId, branchId).then((data) => active && setSales(data)).catch((cause) => active && presentServerError(cause)); return () => { active = false; }; }, [organizationId, branchId, canRead, isOnline, t]);
+  useEffect(() => { if (!userId || !organizationId || !branchId || !canRead || !isOnline) return; let active = true; void loadSales(organizationId, branchId).then((data) => active && setSales(data)).catch((cause) => active && presentServerError(cause)); return () => { active = false; }; }, [userId, organizationId, branchId, canRead, isOnline, salesSyncRevision, t]);
+  useEffect(() => {
+    if (!userId || !organizationId || !branchId) return;
+    return observeSyncedSales(offlineStores.outbox, userId, organizationId, branchId,
+      () => setSalesSyncRevision((revision) => revision + 1));
+  }, [userId, organizationId, branchId]);
   useEffect(() => { if (!organizationId || !canCreate) return; let active = true; const timer = setTimeout(() => { if (!active) return; if (!isOnline) { const cached = getCachedPosCatalog(offlineStores.localStore, organizationId); setCatalogSyncedAt(cached?.syncedAt ?? null); setProducts(searchCachedPosProducts(offlineStores.localStore, organizationId, query)); return; } void searchPosProducts(organizationId, query).then((data) => { if (!active) return; const syncedAt = new Date().toISOString(); mergePosCatalog(offlineStores.localStore, organizationId, data, syncedAt); setCatalogSyncedAt(syncedAt); setProducts(data); }).catch((cause) => active && presentServerError(cause)); }, 200); return () => { active = false; clearTimeout(timer); }; }, [organizationId, query, canCreate, isOnline, t]);
   useEffect(() => { if (!organizationId || !branchId || !canCreate) return; let active = true; if (!isOnline) { const cached = getCachedPosStock(offlineStores.localStore, organizationId, branchId); const timer = setTimeout(() => active && setStockSyncedAt(cached?.syncedAt ?? null), 0); return () => { active = false; clearTimeout(timer); }; } void loadInventoryBalances(organizationId, branchId).then((balances) => { if (!active) return; const syncedAt = new Date().toISOString(); cachePosStockSnapshot(offlineStores.localStore, organizationId, branchId, balances, syncedAt); setStockSyncedAt(syncedAt); }).catch((cause) => active && presentServerError(cause)); return () => { active = false; }; }, [organizationId, branchId, canCreate, isOnline, t]);
   useEffect(() => { let active = true; const timer = setTimeout(() => { if (!active) return; if (!organizationId || !branchId || !lines.length) { setQuoteTotal(0); setQuoteSyncedAt(null); setPriceBlocked(false); return; } if (!isOnline) { const cached = getCachedSaleQuote(offlineStores.localStore, organizationId, branchId, lines); setQuoteTotal(cached ? Number(cached.data.total_amount) : 0); setQuoteSyncedAt(cached?.syncedAt ?? null); setPriceBlocked(false); if (!cached) setError(t('pos.noTrustedOfflinePrice')); return; } void quoteSale(organizationId, branchId, lines).then((quote) => { if (!active) return; const syncedAt = new Date().toISOString(); cacheSaleQuote(offlineStores.localStore, organizationId, branchId, lines, quote, syncedAt); setQuoteTotal(Number(quote.total_amount)); setQuoteSyncedAt(syncedAt); setPriceBlocked(false); setError(null); }).catch((cause) => { if (!active) return; setQuoteTotal(0); setQuoteSyncedAt(null); setPriceBlocked(posErrorTranslationKey(cause) === 'pos.sellingPriceRequired'); presentServerError(cause); }); }, 0); return () => { active = false; clearTimeout(timer); }; }, [organizationId, branchId, lines, isOnline, t]);
   useEffect(() => { if (!organizationId || !canReadCustomers || !isOnline) return; let active = true; void loadCustomers(organizationId).then((data) => active && setCustomers(data)).catch((cause) => active && presentServerError(cause)); return () => { active = false; }; }, [organizationId, canReadCustomers, isOnline, t]);
   useEffect(() => { const timer = setTimeout(() => { void refreshOutboxState(); }, 0); const unsubscribe = offlineStores.outbox.subscribe(() => { void refreshOutboxState(); }); return () => { clearTimeout(timer); unsubscribe(); }; }, [refreshOutboxState]);
-  useEffect(() => { if (!isOnline) return; let active = true; void replayPendingSales(offlineStores.outbox).then(async (result) => { if (!active) return; await refreshOutboxState(); if (result.synced > 0) { setMessage(t('pos.offlineSalesSynchronized', { count: result.synced })); await refreshSales(); } if (result.conflicts > 0) setError(t('pos.offlineSalesConflict', { count: result.conflicts })); }); return () => { active = false; }; }, [isOnline, t, refreshOutboxState]);
 
   const offlineAvailable = (productId: string) => organizationId && branchId ? getOfflineAvailableQuantity({ store: offlineStores.localStore, outbox: offlineStores.outbox, organizationId, branchId, productId }) : null;
   const addProduct = (product: PosProduct) => applySaleDraftMutation(saleSubmissionInFlight.current, () => { if (!isOnline) { const available = offlineAvailable(product.id); const inCart = cart.find((row) => row.product_id === product.id)?.quantity ?? 0; if (available === null) { setError(t('pos.noOfflineStockSnapshot')); return; } if (inCart + 1 > available) { setError(t('pos.offlineStockAvailable', { count: available })); return; } } setCart((current) => { const existing = current.find((row) => row.product_id === product.id); return existing ? current.map((row) => row.product_id === product.id ? { ...row, quantity: row.quantity + 1 } : row) : [...current, { product_id: product.id, quantity: 1, product }]; }); });

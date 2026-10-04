@@ -3,6 +3,8 @@ import { createNamespacedStorage, getLocalStorage, type KeyValueStorage } from '
 
 export type OutboxStatus = 'PENDING' | 'SYNCING' | 'SYNCED' | 'CONFLICT' | 'FAILED';
 
+export const OUTBOX_STALE_SYNCING_AFTER_MS = 2 * 60 * 1000;
+
 export type OutboxOperation<TPayload = unknown> = {
   id: string;
   kind: string;
@@ -20,6 +22,28 @@ export type OutboxOperation<TPayload = unknown> = {
 };
 
 export type OutboxUpdate = Partial<Omit<OutboxOperation, 'id' | 'idempotencyKey' | 'createdAt'>>;
+
+function validTimestamp(value: unknown): number | null {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+export function outboxReplayEligibleAt(
+  operation: OutboxOperation,
+  staleSyncingAfterMs = OUTBOX_STALE_SYNCING_AFTER_MS,
+): number | null {
+  if (operation.status === 'PENDING') return 0;
+  if (operation.status === 'FAILED') {
+    if (operation.nextAttemptAt === undefined) return 0;
+    return validTimestamp(operation.nextAttemptAt);
+  }
+  if (operation.status === 'SYNCING') {
+    const lastAttemptAt = validTimestamp(operation.lastAttemptAt);
+    return lastAttemptAt === null ? null : lastAttemptAt + staleSyncingAfterMs;
+  }
+  return null;
+}
 
 export type OutboxEnqueueValidator = (operations: readonly OutboxOperation[]) => void;
 
@@ -476,17 +500,11 @@ export class OutboxStore {
     return updated;
   }
 
-  pending(now = new Date(), staleSyncingAfterMs = 2 * 60 * 1000): OutboxOperation[] {
+  pending(now = new Date(), staleSyncingAfterMs = OUTBOX_STALE_SYNCING_AFTER_MS): OutboxOperation[] {
     const nowMs = now.getTime();
     return this.list().filter((item) => {
-      if (item.status === 'PENDING') return true;
-      if (item.status === 'FAILED') {
-        return !item.nextAttemptAt || new Date(item.nextAttemptAt).getTime() <= nowMs;
-      }
-      if (item.status === 'SYNCING' && item.lastAttemptAt) {
-        return nowMs - new Date(item.lastAttemptAt).getTime() >= staleSyncingAfterMs;
-      }
-      return false;
+      const eligibleAt = outboxReplayEligibleAt(item, staleSyncingAfterMs);
+      return eligibleAt !== null && eligibleAt <= nowMs;
     });
   }
 

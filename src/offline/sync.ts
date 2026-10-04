@@ -10,6 +10,21 @@ export type ReplayHandler = (operation: OutboxOperation) => Promise<ReplayResult
 type ReplaySummary = { synced: number; conflicts: number; failed: number };
 type ReplayLock = (run: () => Promise<ReplaySummary>) => Promise<ReplaySummary | null>;
 
+// Shared by all coordinator instances in this runtime, not by an auth owner or
+// scheduler lifecycle. Never release an unresolved replay on scheduler stop:
+// an already-dispatched RPC can still complete after its generation is obsolete.
+let runtimeReplayActive = false;
+
+async function withRuntimeReplayLock(replayLock: ReplayLock, run: () => Promise<ReplaySummary>) {
+  if (runtimeReplayActive) return null;
+  runtimeReplayActive = true;
+  try {
+    return await replayLock(run);
+  } finally {
+    runtimeReplayActive = false;
+  }
+}
+
 type BrowserLockManager = {
   request<T>(
     name: string,
@@ -77,7 +92,7 @@ export class SyncCoordinator {
 
   replayPending(): Promise<ReplaySummary> {
     if (this.inFlight) return this.inFlight;
-    this.inFlight = this.replayLock(() => this.runReplay())
+    this.inFlight = withRuntimeReplayLock(this.replayLock, () => this.runReplay())
       .then((result) => result ?? { synced: 0, conflicts: 0, failed: 0 })
       .finally(() => {
         this.inFlight = null;
@@ -107,8 +122,8 @@ export class SyncCoordinator {
     let failed = 0;
 
     if (!this.canReplay()) return { synced, conflicts, failed };
-    // The browser replay lock is already held here. Refresh after acquiring it
-    // so this tab replays the latest transactionally persisted cross-tab state.
+    // The runtime lock and, where available, browser replay lock are held here.
+    // Refresh after acquiring them to replay the latest durable owner/state.
     try {
       await this.outbox.refresh(this.expectedOwnerId);
     } catch (error) {

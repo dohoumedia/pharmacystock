@@ -5,6 +5,7 @@ import { OutboxStore } from '../offline/outbox';
 import { OfflineSessionScope } from '../offline/sessionScope';
 import type { KeyValueStorage } from '../offline/storage';
 import { SyncCoordinator } from '../offline/sync';
+import { OutboxReplayScheduler } from '../offline/replayScheduler';
 import { startAuthLifecycle, type AuthLifecycleClient } from './authLifecycle';
 
 function session(userId: string, accessToken = 'access-1'): Session {
@@ -87,6 +88,65 @@ describe('authenticated session lifecycle', () => {
     await expect(coordinator.replayPending()).resolves.toEqual({ synced: 1, conflicts: 0, failed: 0 });
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'stable-sale-key' }));
     lifecycle.stop();
+  });
+
+  it('preserves a scheduled stale replay across same-user TOKEN_REFRESHED events', async () => {
+    const storage = memoryStorage();
+    const scope = new OfflineSessionScope(storage);
+    const outbox = new OutboxStore(storage);
+    await scope.bindUser('user-a');
+    await outbox.enqueue({
+      id: 'scheduled-sale-a',
+      kind: 'SALE',
+      organizationId: 'org-a',
+      idempotencyKey: 'scheduled-stable-sale-key',
+      payload: {},
+      createdAt: '2026-09-29T11:55:00.000Z',
+    }, 'user-a');
+    await outbox.update('scheduled-sale-a', {
+      status: 'SYNCING',
+      attemptCount: 1,
+      lastAttemptAt: '2026-09-29T12:00:00.000Z',
+    }, 'user-a');
+
+    const auth = fakeAuth(Promise.resolve({ data: { session: session('user-a') }, error: null }));
+    const commit = vi.fn();
+    const lifecycle = startAuthLifecycle(auth.client, {
+      commit,
+      bindUser: (userId) => scope.bindUser(userId),
+    });
+    await vi.waitFor(() => expect(commit).toHaveBeenCalled());
+
+    vi.useFakeTimers();
+    let scheduler: OutboxReplayScheduler | null = null;
+    try {
+      vi.setSystemTime(new Date('2026-09-29T12:01:00.000Z'));
+      const replayScope = scope.replayScope();
+      const submit = vi.fn(async () => ({ status: 'SYNCED' as const }));
+      const coordinator = new SyncCoordinator(outbox, { SALE: submit }, {
+        expectedOwnerId: 'user-a',
+        canReplay: () => scope.isReplayScopeCurrent(replayScope),
+      });
+      scheduler = new OutboxReplayScheduler(outbox, () => coordinator.replayPending(), {
+        expectedOwnerId: 'user-a',
+      });
+      scheduler.start();
+      await vi.advanceTimersByTimeAsync(0);
+
+      auth.emit('TOKEN_REFRESHED', session('user-a', 'access-2'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(scope.replayScope()).toEqual(replayScope);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(submit).toHaveBeenCalledTimes(1);
+      expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+        idempotencyKey: 'scheduled-stable-sale-key',
+      }));
+    } finally {
+      scheduler?.stop();
+      lifecycle.stop();
+      vi.useRealTimers();
+    }
   });
 
   it('invalidates stale replay immediately on a real user switch without exposing the previous user outbox', async () => {
