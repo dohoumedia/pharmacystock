@@ -106,14 +106,18 @@ export interface OutboxPersistence {
 
 type PersistedOutbox = {
   version: 1;
-  operations: OutboxOperation[];
+  operations: unknown[];
 };
+
+type LegacyGlobalRecovery = { raw: string; ownerId: string | null };
 
 type KeyValueOutboxState = {
   version: 2;
   ownerId: string | null;
   operations: OutboxOperation[];
   vaults: Record<string, OutboxOperation[]>;
+  // A durable receipt permits cleanup retry without reactivating synced intents.
+  legacyGlobalRecovery?: LegacyGlobalRecovery;
 };
 
 export type OutboxStoreOptions = {
@@ -161,14 +165,15 @@ export function immutableOutboxContentMatches(left: OutboxOperation, right: Outb
   return stableSerialize(immutableContent(left)) === stableSerialize(immutableContent(right));
 }
 
-function parsePersisted(raw: string | null): OutboxOperation[] {
-  if (!raw) return [];
+function parsePersisted(raw: string | null): OutboxOperation[] | null {
+  if (raw === null) return null;
   try {
     const parsed = JSON.parse(raw) as PersistedOutbox;
-    if (parsed.version !== 1 || !Array.isArray(parsed.operations)) return [];
+    if (parsed.version !== 1 || !Array.isArray(parsed.operations)
+      || !parsed.operations.every(isRecoverableLegacyOperation)) return null;
     return sortOperations(parsed.operations);
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -304,7 +309,7 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
         : [];
       if (targetOwnerId) delete vaults[targetOwnerId];
       this.writeState({
-        version: 2,
+        ...state,
         ownerId: targetOwnerId,
         operations: restored,
         vaults,
@@ -368,6 +373,7 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
             version: 2,
             ownerId: parsed.ownerId,
             operations: sortOperations(parsed.operations),
+            legacyGlobalRecovery: this.parseRecoveryReceipt(parsed.legacyGlobalRecovery),
             vaults: Object.fromEntries(Object.entries(parsed.vaults).map(([ownerId, operations]) => [
               ownerId,
               Array.isArray(operations) ? sortOperations(operations) : [],
@@ -379,12 +385,25 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
       }
     }
 
+    const legacyRaw = this.legacyNamespaced.get(KEY);
+    const ownerId = this.storage.getItem(LEGACY_OWNER_KEY);
+    const operations = parsePersisted(legacyRaw);
     return {
       version: 2,
-      ownerId: this.storage.getItem(LEGACY_OWNER_KEY),
-      operations: parsePersisted(this.legacyNamespaced.get(KEY)),
+      ownerId,
+      operations: operations ?? [],
       vaults: {},
+      legacyGlobalRecovery: operations !== null && legacyRaw !== null
+        ? { raw: legacyRaw, ownerId }
+        : undefined,
     };
+  }
+
+  private parseRecoveryReceipt(value: unknown): LegacyGlobalRecovery | undefined {
+    if (value === null || typeof value !== 'object' || !('raw' in value) || !('ownerId' in value)) return;
+    if (typeof value.raw !== 'string' || (value.ownerId !== null && typeof value.ownerId !== 'string')
+      || parsePersisted(value.raw) === null) return;
+    return { raw: value.raw, ownerId: value.ownerId };
   }
 
   private writeState(state: KeyValueOutboxState): void {
@@ -401,14 +420,23 @@ class KeyValueOutboxPersistence implements OutboxPersistence {
     // owner verification and mutation one serialized commit on native.
     this.storage.setItem(KEY_VALUE_STATE_KEY, JSON.stringify(normalized));
 
-    // Retain only compatibility metadata outside the authoritative record.
-    // Cleanup failure is safe because all future fallback reads prefer v2.
+    // Only a consumed, fully validated snapshot can be cleaned up. The receipt
+    // survives restart/cleanup failure; a later v2 write must not erase a source
+    // that never contributed to this state or was replaced during the commit.
     try {
-      this.legacyNamespaced.remove(KEY);
-      if (normalized.ownerId) this.storage.setItem(LEGACY_OWNER_KEY, normalized.ownerId);
-      else this.storage.removeItem(LEGACY_OWNER_KEY);
+      const recovered = normalized.legacyGlobalRecovery;
+      if (recovered && this.storage.getItem(LEGACY_OWNER_KEY) === recovered.ownerId
+        && this.legacyNamespaced.get(KEY) === recovered.raw) {
+        this.legacyNamespaced.remove(KEY);
+      }
+      // Retained raw data must keep its original owner (including ownerless).
+      // The v2 record already carries the current active owner independently.
+      if (this.legacyNamespaced.get(KEY) === null) {
+        if (normalized.ownerId) this.storage.setItem(LEGACY_OWNER_KEY, normalized.ownerId);
+        else this.storage.removeItem(LEGACY_OWNER_KEY);
+      }
     } catch {
-      // The committed v2 record remains authoritative and retryable.
+      // The committed v2 record remains authoritative and cleanup is retryable.
     }
   }
 }

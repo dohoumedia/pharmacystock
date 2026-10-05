@@ -292,14 +292,10 @@ for (const adapter of ['key-value', 'indexeddb']) {
       await outbox.refresh('user-a');
       expect(outbox.pending(now)).toEqual([]);
       expect(nextOutboxReplayAt(outbox.list(), now)).toBeNull();
-      if (adapter === 'key-value') {
-        expect(outbox.list()).toEqual([]);
-        expect(storage.getItem(vaultKey)).toBe(raw);
-      } else {
-        // Existing IndexedDB import retains its structurally accepted record;
-        // the shared restoration guard must preserve its invalid timing exactly.
-        expect(outbox.list()).toEqual([JSON.parse(raw).operations[0]]);
-      }
+      // Both legacy import adapters reject malformed envelopes, retaining the
+      // original source. Internally stored v2 timing behavior remains unchanged.
+      expect(outbox.list()).toEqual([]);
+      expect(storage.getItem(vaultKey)).toBe(raw);
     });
   });
 }

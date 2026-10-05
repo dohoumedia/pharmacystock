@@ -1,5 +1,5 @@
 import type { KeyValueStorage } from './storage';
-import { resetInterruptedReplay } from './outboxRecovery';
+import { isRecoverableLegacyOperation, resetInterruptedReplay } from './outboxRecovery';
 import {
   immutableOutboxContentMatches,
   OutboxIdempotencyConflictError,
@@ -63,42 +63,46 @@ async function abortTransaction(transaction: IDBTransaction, completion: Promise
   throw error;
 }
 
-function isOutboxOperation(value: unknown): value is OutboxOperation {
-  if (!value || typeof value !== 'object') return false;
-  const operation = value as Partial<OutboxOperation>;
-  return typeof operation.id === 'string'
-    && operation.id.length > 0
-    && typeof operation.kind === 'string'
-    && operation.kind.length > 0
-    && typeof operation.organizationId === 'string'
-    && operation.organizationId.length > 0
-    && typeof operation.idempotencyKey === 'string'
-    && operation.idempotencyKey.length > 0
-    && typeof operation.createdAt === 'string'
-    && ['PENDING', 'SYNCING', 'SYNCED', 'CONFLICT', 'FAILED'].includes(operation.status ?? '')
-    && typeof operation.attemptCount === 'number'
-    && Number.isFinite(operation.attemptCount)
-    && operation.attemptCount >= 0
-    && 'payload' in operation;
+type LegacyParseResult = { operations: OutboxOperation[]; complete: boolean };
+
+function parseLegacyOperations(values: unknown[]): LegacyParseResult {
+  const operations: OutboxOperation[] = [];
+  const rejectedKeys = new Set<string>();
+  let complete = true;
+  for (const value of values) {
+    if (isRecoverableLegacyOperation(value)) {
+      operations.push(value);
+    } else {
+      complete = false;
+      // Keep a rejected sibling from disappearing before immutable-key grouping.
+      // Inspect only a stored key; never manufacture one for malformed input.
+      if (value !== null && typeof value === 'object'
+        && 'idempotencyKey' in value && typeof value.idempotencyKey === 'string') {
+        rejectedKeys.add(value.idempotencyKey);
+      }
+    }
+  }
+  return {
+    operations: operations.filter((operation) => !rejectedKeys.has(operation.idempotencyKey)),
+    complete,
+  };
 }
 
-function parseLegacy(raw: string): { operations: OutboxOperation[]; complete: boolean } {
+function parseLegacy(raw: string): LegacyParseResult {
   try {
     const parsed = JSON.parse(raw) as LegacyOutbox;
     if (parsed.version !== 1 || !Array.isArray(parsed.operations)) return { operations: [], complete: false };
-    const operations = parsed.operations.filter(isOutboxOperation);
-    return { operations, complete: operations.length === parsed.operations.length };
+    return parseLegacyOperations(parsed.operations);
   } catch {
     return { operations: [], complete: false };
   }
 }
 
-function parseLegacyVault(raw: string): { operations: OutboxOperation[]; complete: boolean } {
+function parseLegacyVault(raw: string): LegacyParseResult {
   try {
     const parsed = JSON.parse(raw) as LegacyVault;
     if (!Array.isArray(parsed.operations)) return { operations: [], complete: false };
-    const operations = parsed.operations.filter(isOutboxOperation);
-    return { operations, complete: operations.length === parsed.operations.length };
+    return parseLegacyOperations(parsed.operations);
   } catch {
     return { operations: [], complete: false };
   }
@@ -433,12 +437,14 @@ export class IndexedDbOutboxPersistence implements OutboxPersistence {
       const owner = await requestResult(metadata.get(OWNER_METADATA_KEY)) as OwnerMetadata | undefined;
       const quarantineKey = `${LEGACY_VAULT_QUARANTINE_PREFIX}${ownerId}`;
       const quarantine = await requestResult(metadata.get(quarantineKey)) as LegacyVaultQuarantine | undefined;
-      if (quarantine?.raw === raw && (!options.ownershipProven || quarantine.safeToDelete)) {
+      const legacy = parseLegacyVault(raw);
+      // Old quarantine markers may have been written by the weaker validator.
+      // Validate before any cached marker can authorize source deletion.
+      if (legacy.complete && quarantine?.raw === raw && (!options.ownershipProven || quarantine.safeToDelete)) {
         await completion;
         return quarantine.safeToDelete;
       }
       const importIntoActive = owner?.userId === ownerId;
-      const legacy = parseLegacyVault(raw);
       if (!options.ownershipProven) {
         let safeToDelete = legacy.complete;
         for (const [idempotencyKey, group] of legacyGroups(legacy.operations)) {

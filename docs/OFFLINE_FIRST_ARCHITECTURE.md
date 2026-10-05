@@ -297,3 +297,12 @@ Automated tests should cover:
 - PWA app-shell offline startup
 - local schema/cache upgrade
 - sign-out local-data cleanup
+
+## Legacy outbox recovery
+
+- Key/value per-user vaults, key/value global v1 snapshots, and IndexedDB global/per-user legacy imports share the envelope validator in `outboxRecovery.ts`. It validates identity, branch-bound SALE scope, duplicated payload scope, status/attempt metadata and timestamps; it does not impose a sale-line/payment schema. Historical object payloads, including `{}`, remain supported.
+- Key/value global v1 recovery is whole-snapshot atomic: one malformed envelope prevents any activation. Exact raw data and its original owner metadata remain retained for explicit recovery; ownerless data is never assigned to the current account.
+- Key/value global cleanup requires a durable recovery receipt, unchanged source bytes and unchanged original owner after the v2 commit. The receipt supports cleanup retries after restart without reactivating synced/removed work. A replaced or unconsumed source is retained, and its owner metadata is not overwritten by account switches while it remains present.
+- IndexedDB retains partial recovery of independent valid groups, its owner routing, fingerprints, immutable conflict checks and transaction boundaries. A malformed member blocks its own stored idempotency-key group, so filtering cannot erase a conflicting sibling. Invalid entries never count toward complete recovery or cleanup eligibility.
+- Cached IndexedDB safe-to-delete markers are revalidated against the canonical envelope contract before authorizing cleanup. Malformed global raw data stays at its original source/owner; per-user raw data stays in that user's retained vault/quarantine.
+- This recovery boundary does not retroactively repair previously imported v2 records or change scheduler, replay-lock, token-refresh, or internal v2 interrupted-replay timing behavior.
