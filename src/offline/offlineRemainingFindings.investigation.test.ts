@@ -2,12 +2,12 @@ import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OutboxStore, type OutboxOperation } from './outbox';
 import { isRecoverableLegacyOperation, stableOutboxSerialize } from './outboxRecovery';
-import { OutboxStore as OlderStore } from '../../.investigation/older/src/offline/outbox';
+import { prePr89OutboxV2Fixture } from './testFixtures/prePr89OutboxV2';
 import type { KeyValueStorage } from './storage';
 import { persistedQuarantine, quarantineOperationRecords } from './outboxRecoveryTestUtils';
 
 // Fixed-behavior regressions; original observations retained in .investigation/.
-// Historical fixtures are verbatim from 622ecc7 (main immediately before PR #89).
+// Tracked historical persistence fixtures describe 622ecc7 (main before PR #89).
 const globalKey = 'pharmacystock:outbox:v1:operations';
 const ownerKey = 'pharmacystock:offline-scope:v1:user-id';
 const stateKey = 'pharmacystock:outbox:v2:key-value-state';
@@ -89,6 +89,38 @@ async function seedIdbV2(factory: IDBFactory, operation: unknown, vaulted: boole
   } finally { database.close(); }
 }
 
+
+// Reproduce the old writer's durable post-import/post-owner-switch state. This
+// bypasses current import validation while retaining historical IDB receipts.
+async function seedPrePr89ImportedV2(storage: KeyValueStorage, operation: OutboxOperation, factory?: IDBFactory) {
+  const fixture = prePr89OutboxV2Fixture(operation);
+  if (!factory) {
+    storage.setItem(stateKey, JSON.stringify(fixture.keyValueState));
+    storage.setItem(ownerKey, 'user-b');
+    expect(JSON.parse(storage.getItem(stateKey)!)).toEqual(fixture.keyValueState);
+    return;
+  }
+  // The supported tracked helper initializes schema and seeds the vaulted row.
+  await seedIdbV2(factory, operation, true);
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = factory.open('pharmacystock:outbox:v2', 2);
+    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+  });
+  try {
+    let stored: unknown;
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(['vaultOperations', 'metadata'], 'readwrite');
+      tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error);
+      const vaulted = tx.objectStore('vaultOperations').get(['user-a', operation.id]);
+      vaulted.onsuccess = () => { stored = vaulted.result; };
+      for (const receipt of fixture.metadata) tx.objectStore('metadata').put(receipt);
+    });
+    expect(stored).toEqual(fixture.vaultOperation);
+  } finally { database.close(); }
+  // Old IndexedDB owner transitions update metadata, leaving this compatibility
+  // key at the original source owner. There is no surviving global v1 source.
+  storage.setItem(ownerKey, 'user-a');
+}
 
 describe('same-key recovery fix regressions', () => {
   it('KV global collapses identical retries and submits the unchanged key once', async () => {
@@ -266,18 +298,14 @@ for (const adapter of ['kv', 'idb'] as const) {
   );
 
   it.each(['PENDING', 'SYNCING'] as const)(
-    adapter + ' valid %s and stable retry identity survive an actual old-build upgrade', async (status) => {
+    adapter + ' valid %s and stable retry identity survive a pre-PR89 persisted upgrade', async (status) => {
       const storage = memoryStorage();
       const factory = adapter === 'idb' ? new IDBFactory() : undefined;
       const valid: OutboxOperation = {
         ...sale(), status,
         ...(status === 'SYNCING' ? { lastAttemptAt: '2026-10-04T11:59:00.000Z', attemptCount: 1 } : {}),
       };
-      seedGlobal(storage, [valid]);
-      const older = new OlderStore(storage, { indexedDB: factory });
-      await older.refresh('user-a');
-      await older.update(valid.id, {}, 'user-a');
-      await older.transitionOwner('user-a', 'user-b');
+      await seedPrePr89ImportedV2(storage, valid, factory);
       const h = await replayHarness(storage, factory);
       await h.bind('user-b');
       expect(h.outbox.list()).toEqual([]);
@@ -290,16 +318,11 @@ for (const adapter of ['kv', 'idb'] as const) {
   );
 
   it.each(malformedFields.filter(({ name }) => ['blank key', 'org mismatch', 'branch mismatch', 'invalid createdAt'].includes(name)))(
-    adapter + ' actual pre-PR89 import of $name is quarantined on upgrade', async ({ patch }) => {
+    adapter + ' persisted pre-PR89 import of $name is quarantined on upgrade', async ({ patch }) => {
       const storage = memoryStorage();
       const factory = adapter === 'idb' ? new IDBFactory() : undefined;
       const bad = { ...sale(), ...patch };
-      seedGlobal(storage, [bad]);
-      const older = new OlderStore(storage, { indexedDB: factory });
-      await older.refresh('user-a');
-      expect(older.list()).toEqual([bad]);
-      await older.update(bad.id, {}, 'user-a');
-      await older.transitionOwner('user-a', 'user-b');
+      await seedPrePr89ImportedV2(storage, bad, factory);
       const h = await replayHarness(storage, factory);
       await h.bind('user-b');
       await h.bind('user-a');
