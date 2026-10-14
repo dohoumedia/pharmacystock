@@ -1,5 +1,6 @@
 import type { ConnectivityState } from '@/providers/ConnectivityProvider';
 import type { OutboxOperation } from './outbox';
+import { OUTBOX_DISPATCH_BLOCKED_CODE } from './outboxRecovery';
 
 export type SyncStatusKind = 'checking' | 'offline' | 'syncing' | 'conflict' | 'pending' | 'synced';
 
@@ -21,7 +22,7 @@ export function deriveSyncStatus(
   if (connectivity === 'checking') return { kind: 'checking', pendingCount, conflictCount };
   if (conflictCount > 0) return { kind: 'conflict', pendingCount, conflictCount };
   if (connectivity === 'offline') return { kind: 'offline', pendingCount, conflictCount };
-  if (operations.some((operation) => operation.status === 'SYNCING')) {
+  if (operations.some((operation) => operation.status === 'SYNCING' && operation.lastErrorCode !== OUTBOX_DISPATCH_BLOCKED_CODE)) {
     return { kind: 'syncing', pendingCount, conflictCount };
   }
   if (pendingCount > 0) return { kind: 'pending', pendingCount, conflictCount };

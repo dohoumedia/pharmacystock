@@ -2,6 +2,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it } from 'vitest';
 import { OutboxIdempotencyConflictError, OutboxStore, type OutboxOperation } from './outbox';
 import type { KeyValueStorage } from './storage';
+import { persistedQuarantine, quarantineOperationRecords } from './outboxRecoveryTestUtils';
 
 const LEGACY_KEY = 'pharmacystock:outbox:v1:operations';
 
@@ -147,7 +148,7 @@ describe('IndexedDB outbox persistence', () => {
     await second.enqueue(operation('sale-b', 'idempotency-b', '2026-09-20T12:01:00.000Z'), 'user-a');
 
     await Promise.all([
-      first.update('sale-a', { status: 'SYNCING', attemptCount: 1 }, 'user-a'),
+      first.update('sale-a', { status: 'SYNCING', attemptCount: 1, lastAttemptAt: '2026-09-20T12:02:00.000Z' }, 'user-a'),
       second.update('sale-b', { status: 'CONFLICT', lastErrorCode: 'INSUFFICIENT_STOCK' }, 'user-a'),
     ]);
 
@@ -340,7 +341,10 @@ describe('IndexedDB outbox persistence', () => {
 
     const reconstructed = store(factory, storage, 'outbox-changed-import-fingerprint');
     await reconstructed.ready();
-    expect(reconstructed.list()).toEqual([original]);
+    expect(reconstructed.list()).toEqual([]);
+    expect(quarantineOperationRecords(await persistedQuarantine(storage, {
+      indexedDB: factory, databaseName: 'outbox-changed-import-fingerprint',
+    }))).toEqual(expect.arrayContaining([original, changed]));
     expect(JSON.parse(storage.getItem(LEGACY_KEY) ?? '{}').operations).toEqual([changed]);
   });
 

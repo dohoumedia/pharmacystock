@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OutboxOperation, OutboxStatus } from './outbox';
 import { deriveSyncStatus } from './syncStatus';
+import { OUTBOX_DISPATCH_BLOCKED_CODE } from './outboxRecovery';
 
 function operation(status: OutboxStatus): OutboxOperation {
   return {
@@ -23,6 +24,13 @@ describe('deriveSyncStatus', () => {
       pendingCount: 1,
       conflictCount: 1,
     });
+  });
+
+  it('shows structural browser dispatch blocking as pending without hiding actual active sync', () => {
+    const blocked = { ...operation('SYNCING'), lastErrorCode: OUTBOX_DISPATCH_BLOCKED_CODE };
+    expect(deriveSyncStatus('online', [blocked])).toEqual({ kind: 'pending', pendingCount: 1, conflictCount: 0 });
+    expect(deriveSyncStatus('online', [blocked, operation('SYNCING')]).kind).toBe('syncing');
+    expect(deriveSyncStatus('offline', [blocked]).kind).toBe('offline');
   });
 
   it('distinguishes active sync, queued work, offline, and synchronized states', () => {

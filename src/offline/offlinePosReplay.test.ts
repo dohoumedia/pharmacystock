@@ -115,7 +115,7 @@ describe('app-level scheduled POS replay integration', () => {
     expect(h.completeSale).toHaveBeenCalledTimes(1);
     expect(h.completeSale).toHaveBeenCalledWith(expect.objectContaining({
       saleNumber: 'SALE-user-b', idempotencyKey: 'stable-user-b-branch-a',
-    }));
+    }), expect.objectContaining({ outbox: expect.any(Object), canReplay: expect.any(Function) }));
     expect(h.getSession).toHaveBeenCalledTimes(1);
     expect(h.outbox.list()).toEqual([expect.objectContaining({ status: 'SYNCED', id: 'sale-user-b-branch-a' })]);
     await vi.advanceTimersByTimeAsync(300_000);
@@ -232,8 +232,8 @@ describe('app-level scheduled POS replay integration', () => {
       expect(h.completeSale).toHaveBeenCalledTimes(2);
       expect(maximumActiveRpcs).toBe(1);
       expect(h.completeSale.mock.calls).toEqual([
-        [expect.objectContaining({ idempotencyKey: 'stable-user-a-branch-a' })],
-        [expect.objectContaining({ idempotencyKey: 'stable-user-a-branch-a' })],
+        [expect.objectContaining({ idempotencyKey: 'stable-user-a-branch-a' }), expect.any(Object)],
+        [expect.objectContaining({ idempotencyKey: 'stable-user-a-branch-a' }), expect.any(Object)],
       ]);
       expect(h.outbox.list()[0]).toMatchObject({ status: 'SYNCED', serverId: 'server-sale' });
       await vi.advanceTimersByTimeAsync(300_000);

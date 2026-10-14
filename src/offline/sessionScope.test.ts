@@ -51,7 +51,7 @@ async function seedScopedState(storage: KeyValueStorage) {
   await new OutboxStore(storage).enqueue({
     id: 'sale-a',
     kind: 'SALE',
-    organizationId: 'org-a',
+    organizationId: 'org-a', branchId: 'branch-a',
     idempotencyKey: 'sale-key-a',
     payload: {},
     createdAt: '2026-08-23T18:01:00.000Z',
@@ -152,7 +152,7 @@ describe('offline session scope', () => {
     await outbox.enqueue({
       id: 'sale-conflict',
       kind: 'SALE',
-      organizationId: 'org-a',
+      organizationId: 'org-a', branchId: 'branch-a',
       idempotencyKey: 'conflict-key-a',
       payload: {},
       createdAt: '2026-08-23T18:02:00.000Z',

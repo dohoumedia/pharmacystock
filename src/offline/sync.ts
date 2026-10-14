@@ -1,6 +1,8 @@
-import { OutboxOwnerMismatchError, OutboxStore, type OutboxOperation, type OutboxUpdate } from './outbox';
+import { outboxReplayEligibleAt, OutboxOwnerMismatchError, OutboxStore, type OutboxOperation, type OutboxUpdate } from './outbox';
+import { isRecoverableLegacyOperation, stableOutboxSerialize } from './outboxRecovery';
 
 export type ReplayResult =
+  | { status: 'SKIPPED' }
   | { status: 'SYNCED'; serverId?: string }
   | { status: 'CONFLICT'; errorCode: string }
   | { status: 'FAILED'; errorCode: string; retryable: boolean };
@@ -8,6 +10,11 @@ export type ReplayResult =
 export type ReplayHandler = (operation: OutboxOperation) => Promise<ReplayResult>;
 
 type ReplaySummary = { synced: number; conflicts: number; failed: number };
+
+function matchesReplayAttempt(current: OutboxOperation | undefined, expected: OutboxOperation): current is OutboxOperation {
+  return current !== undefined && isRecoverableLegacyOperation(current)
+    && stableOutboxSerialize(current) === stableOutboxSerialize(expected);
+}
 type ReplayLock = (run: () => Promise<ReplaySummary>) => Promise<ReplaySummary | null>;
 
 // Shared by all coordinator instances in this runtime, not by an auth owner or
@@ -75,6 +82,7 @@ export class SyncCoordinator {
   private readonly canReplay: () => boolean;
   private readonly replayLock: ReplayLock;
   private readonly expectedOwnerId?: string;
+  private replayOwnerId?: string | null;
 
   constructor(
     private readonly outbox: OutboxStore,
@@ -106,12 +114,36 @@ export class SyncCoordinator {
     return new Date(this.now().getTime() + delay).toISOString();
   }
 
-  private async updateForReplay(id: string, patch: OutboxUpdate): Promise<boolean> {
+  private async readForReplay(expected: OutboxOperation): Promise<OutboxOperation | null> {
+    if (!this.canReplay()) return null;
     try {
-      await this.outbox.update(id, patch, this.expectedOwnerId);
-      return true;
+      const operations = await this.outbox.refresh(this.replayOwnerId);
+      if (!this.canReplay()) return null;
+      const current = operations.find((operation) => operation.id === expected.id);
+      // Compare identity, immutable content and the captured lifecycle/attempt.
+      // A replacement, quarantine, or newer attempt cannot inherit this replay.
+      return matchesReplayAttempt(current, expected) ? current : null;
     } catch (error) {
-      if (error instanceof OutboxOwnerMismatchError) return false;
+      if (error instanceof OutboxOwnerMismatchError) return null;
+      throw error;
+    }
+  }
+
+  private isDue(operation: OutboxOperation): boolean {
+    const eligibleAt = outboxReplayEligibleAt(operation);
+    return eligibleAt !== null && eligibleAt <= this.now().getTime();
+  }
+
+  private async updateForReplay(operation: OutboxOperation, patch: OutboxUpdate): Promise<OutboxOperation | null> {
+    if (!this.canReplay()) return null;
+    try {
+      // Compare and update inside the adapter's existing serialized commit.
+      // Null is a lost membership/attempt, never permission to submit or count.
+      const updated = await this.outbox.update(operation.id, patch, this.replayOwnerId, operation);
+      return updated && this.canReplay()
+        && stableOutboxSerialize(updated) === stableOutboxSerialize({ ...operation, ...patch }) ? updated : null;
+    } catch (error) {
+      if (error instanceof OutboxOwnerMismatchError) return null;
       throw error;
     }
   }
@@ -122,10 +154,14 @@ export class SyncCoordinator {
     let failed = 0;
 
     if (!this.canReplay()) return { synced, conflicts, failed };
+    // Even callers without an explicit owner remain bound to the durable owner
+    // captured under the replay lock; null is an explicit unowned scope.
+    this.replayOwnerId = this.expectedOwnerId ?? await this.outbox.owner();
+    if (!this.canReplay()) return { synced, conflicts, failed };
     // The runtime lock and, where available, browser replay lock are held here.
     // Refresh after acquiring them to replay the latest durable owner/state.
     try {
-      await this.outbox.refresh(this.expectedOwnerId);
+      await this.outbox.refresh(this.replayOwnerId);
     } catch (error) {
       if (error instanceof OutboxOwnerMismatchError) return { synced, conflicts, failed };
       throw error;
@@ -141,89 +177,109 @@ export class SyncCoordinator {
         const preparationError = error instanceof ReplayPreparationError
           ? error
           : new ReplayPreparationError('REPLAY_PREPARATION_FAILED', true);
-        for (const operation of pending) {
+        for (const captured of pending) {
+          if (!this.canReplay()) break;
+          const operation = await this.readForReplay(captured);
+          if (!operation || !this.isDue(operation)) continue;
           const attemptCount = operation.attemptCount + 1;
-          if (!await this.updateForReplay(operation.id, {
+          if (!await this.updateForReplay(operation, {
             status: preparationError.retryable ? 'FAILED' : 'CONFLICT',
             attemptCount,
             lastAttemptAt: this.now().toISOString(),
             nextAttemptAt: preparationError.retryable ? this.retryAt(attemptCount) : undefined,
             lastErrorCode: preparationError.code,
-          })) return { synced, conflicts, failed };
+          })) continue;
+          if (preparationError.retryable) failed += 1;
+          else conflicts += 1;
         }
-        return preparationError.retryable
-          ? { synced: 0, conflicts: 0, failed: pending.length }
-          : { synced: 0, conflicts: pending.length, failed: 0 };
+        return { synced, conflicts, failed };
       }
     }
 
-    for (const operation of pending) {
+    for (const captured of pending) {
       if (!this.canReplay()) return { synced, conflicts, failed };
+      const operation = await this.readForReplay(captured);
+      if (!operation || !this.isDue(operation)) continue;
       const handler = this.handlers[operation.kind];
       const nextAttemptCount = operation.attemptCount + 1;
       const attemptAt = this.now().toISOString();
 
       if (!handler) {
-        if (!await this.updateForReplay(operation.id, {
+        if (!await this.updateForReplay(operation, {
           status: 'CONFLICT',
           attemptCount: nextAttemptCount,
           lastAttemptAt: attemptAt,
           nextAttemptAt: undefined,
           lastErrorCode: 'OUTBOX_HANDLER_MISSING',
-        })) return { synced, conflicts, failed };
+        })) continue;
         conflicts += 1;
         continue;
       }
 
-      if (!await this.updateForReplay(operation.id, {
+      const claimed = await this.updateForReplay(operation, {
         status: 'SYNCING',
         attemptCount: nextAttemptCount,
         lastAttemptAt: attemptAt,
         nextAttemptAt: undefined,
         lastErrorCode: undefined,
-      })) return { synced, conflicts, failed };
-
+      });
+      if (!claimed) continue;
+      // Final durable membership guard after asynchronous preparation AND the
+      // SYNCING commit. Only this exact claimed attempt may reach submission.
+      let active: OutboxOperation[];
       try {
-        const result = await handler(operation);
+        active = await this.outbox.refresh(this.replayOwnerId);
+      } catch (error) {
+        if (error instanceof OutboxOwnerMismatchError) return { synced, conflicts, failed };
+        throw error;
+      }
+      if (!this.canReplay()) return { synced, conflicts, failed };
+      const authoritative = active.find((item) => item.id === claimed.id);
+      if (!matchesReplayAttempt(authoritative, claimed)) continue;
+      try {
+        // The SALE transport additionally fences SDK token acquisition at the
+        // actual fetch boundary, inside the adapter dispatch critical section.
+        const result = await handler(authoritative);
         if (!this.canReplay()) return { synced, conflicts, failed };
+        if (result.status === 'SKIPPED') continue;
         if (result.status === 'SYNCED') {
-          if (!await this.updateForReplay(operation.id, {
+          if (!await this.updateForReplay(authoritative, {
             status: 'SYNCED',
             serverId: result.serverId,
             nextAttemptAt: undefined,
             lastErrorCode: undefined,
-          })) return { synced, conflicts, failed };
+          })) continue;
           synced += 1;
         } else if (result.status === 'CONFLICT') {
-          if (!await this.updateForReplay(operation.id, {
+          if (!await this.updateForReplay(authoritative, {
             status: 'CONFLICT',
             nextAttemptAt: undefined,
             lastErrorCode: result.errorCode,
-          })) return { synced, conflicts, failed };
+          })) continue;
           conflicts += 1;
         } else if (result.retryable) {
-          if (!await this.updateForReplay(operation.id, {
+          if (!await this.updateForReplay(authoritative, {
             status: 'FAILED',
             nextAttemptAt: this.retryAt(nextAttemptCount),
             lastErrorCode: result.errorCode,
-          })) return { synced, conflicts, failed };
+          })) continue;
           failed += 1;
         } else {
-          if (!await this.updateForReplay(operation.id, {
+          if (!await this.updateForReplay(authoritative, {
             status: 'CONFLICT',
             nextAttemptAt: undefined,
             lastErrorCode: result.errorCode,
-          })) return { synced, conflicts, failed };
+          })) continue;
           conflicts += 1;
         }
       } catch (error) {
         if (error instanceof OutboxOwnerMismatchError) return { synced, conflicts, failed };
         if (!this.canReplay()) return { synced, conflicts, failed };
-        if (!await this.updateForReplay(operation.id, {
+        if (!await this.updateForReplay(authoritative, {
           status: 'FAILED',
           nextAttemptAt: this.retryAt(nextAttemptCount),
           lastErrorCode: 'NETWORK_OR_UNKNOWN_ERROR',
-        })) return { synced, conflicts, failed };
+        })) continue;
         failed += 1;
       }
     }
