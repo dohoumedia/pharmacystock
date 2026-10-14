@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { OutboxStore, type OutboxOperation } from './outbox';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
+import { persistedQuarantine, quarantineOperationRecords } from './outboxRecoveryTestUtils';
 
 const LEGACY_OUTBOX_KEY = 'pharmacystock:outbox:v1:operations';
 const LEGACY_OWNER_KEY = 'pharmacystock:offline-scope:v1:user-id';
@@ -152,7 +153,9 @@ describe('legacy outbox quarantine recovery', () => {
     const restored = outbox(factory, storage, databaseName);
     await restored.refresh('user-a');
 
-    expect(restored.list()).toEqual([active]);
+    expect(restored.list()).toEqual([]);
+    expect(quarantineOperationRecords(await persistedQuarantine(storage, { indexedDB: factory, databaseName })))
+      .toEqual(expect.arrayContaining([active, conflicting]));
     expect(JSON.parse(storage.getItem(legacyVaultKey('user-a')) ?? '{}').operations).toEqual([conflicting]);
   });
 

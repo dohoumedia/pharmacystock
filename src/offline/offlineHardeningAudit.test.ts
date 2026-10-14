@@ -5,6 +5,7 @@ import { nextOutboxReplayAt } from './replayScheduler';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
 import { SyncCoordinator } from './sync';
+import { persistedQuarantine, quarantineOperationRecords } from './outboxRecoveryTestUtils';
 
 const vaultKey = 'pharmacystock:offline-scope:v1:vault:user-a';
 const ownerKey = 'pharmacystock:offline-scope:v1:user-id';
@@ -100,10 +101,10 @@ for (const adapter of ['key-value', 'indexeddb']) {
         const outbox = new OutboxStore(storage, options);
         await scope.bindUser('user-a');
         await outbox.enqueue(operation(), 'user-a');
-        await outbox.update('sale-a', {
+        const original = (await outbox.update('sale-a', {
           status: 'SYNCING', attemptCount: 1, lastAttemptAt: lastAttemptAt as string | undefined,
-        }, 'user-a');
-        const original = outbox.list()[0]!;
+        }, 'user-a'))!;
+        expect(outbox.list()).toEqual([]);
         expect(outboxReplayEligibleAt(original)).toBeNull();
         expect(outbox.pending(now)).toEqual([]);
         expect(nextOutboxReplayAt(outbox.list(), now)).toBeNull();
@@ -116,8 +117,8 @@ for (const adapter of ['key-value', 'indexeddb']) {
         await scope.bindUser('user-a');
         await outbox.refresh('user-a');
 
-        expect.soft(outbox.list()[0]).toMatchObject({ id: original.id, idempotencyKey: original.idempotencyKey });
-        expect.soft(outbox.list()[0]?.status).toBe('SYNCING');
+        expect(outbox.list()).toEqual([]);
+        expect(quarantineOperationRecords(await persistedQuarantine(storage, options))).toContainEqual(original);
         expect.soft(outbox.pending(now)).toEqual([]);
         expect.soft(nextOutboxReplayAt(outbox.list(), now)).toBeNull();
         const submit = vi.fn(async () => ({ status: 'SYNCED' as const }));
@@ -208,7 +209,9 @@ for (const adapter of ['key-value', 'indexeddb']) {
       storage.setItem(vaultKey, raw);
       await scope.bindUser('user-a');
       await outbox.refresh('user-a');
-      expect(outbox.list()).toEqual([operation()]);
+      expect(outbox.list()).toEqual([]);
+      expect(quarantineOperationRecords(await persistedQuarantine(storage, options)))
+        .toEqual(expect.arrayContaining([operation()]));
       expect(storage.getItem(vaultKey)).toBe(raw);
     });
 

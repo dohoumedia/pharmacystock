@@ -1,3 +1,4 @@
+import { ReplayDispatchSkipped } from './replayDispatch';
 import type { KeyValueStorage } from './storage';
 import { LocalStore } from './localStore';
 import { OutboxStore, createOutboxId, type OutboxOperation } from './outbox';
@@ -340,9 +341,10 @@ export async function replayPendingSales(
           idempotencyKey: operation.idempotencyKey,
           customerId: payload.customerId,
           notes: payload.notes,
-        });
+        }, { outbox, operation, scope: replayScope, canReplay });
         return { status: 'SYNCED', serverId };
       } catch (error) {
+        if (error instanceof ReplayDispatchSkipped) return { status: 'SKIPPED' };
         return classifySaleError(error);
       }
     },

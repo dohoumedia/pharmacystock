@@ -88,15 +88,9 @@ export class OfflineSessionScope {
     const vaultKey = `vault:${userId}`;
     const legacyVault = this.scopeStorage.get(vaultKey);
     if (!legacyVault) return;
+    const expectedOwnerId = await this.outbox.owner();
     const imported = await this.outbox.importLegacyVault(userId, legacyVault, { ownershipProven: true });
-    if (imported && this.scopeStorage.get(vaultKey) === legacyVault) {
-      try {
-        this.scopeStorage.remove(vaultKey);
-      } catch {
-        // Recovery is already durable. Retaining the legacy source makes the
-        // cleanup retryable without turning a committed recovery into failure.
-      }
-    }
+    if (imported) await this.outbox.cleanupLegacyVault(userId, legacyVault, expectedOwnerId);
   }
 
   replayScope(): OfflineReplayScope {

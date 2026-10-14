@@ -402,7 +402,7 @@ for (const path of paths) {
         expect(loadInventoryBalances.mock.calls).toEqual([['org-a', 'branch-a']]);
         expect(completeSale).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
           organizationId: 'org-a', branchId: 'branch-a', idempotencyKey: 'stable-sale-a',
-        }));
+        }), expect.objectContaining({ outbox: expect.any(Object), canReplay: expect.any(Function) }));
         expect(storage.getItem(source.key)).toBeNull();
       } else {
         expect(completeSale).not.toHaveBeenCalled();

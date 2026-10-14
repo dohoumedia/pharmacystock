@@ -4,6 +4,7 @@ import { OutboxStore, type OutboxOperation, type OutboxStoreOptions } from './ou
 import { nextOutboxReplayAt } from './replayScheduler';
 import { OfflineSessionScope } from './sessionScope';
 import type { KeyValueStorage } from './storage';
+import { persistedQuarantine, quarantineOperationRecords } from './outboxRecoveryTestUtils';
 
 const vaultKey = 'pharmacystock:offline-scope:v1:vault:user-a';
 const stateKey = 'pharmacystock:outbox:v2:key-value-state';
@@ -158,14 +159,14 @@ describe('key/value legacy recovery envelope regressions', () => {
     await scope.bindUser('user-a');
     const outbox = new OutboxStore(storage);
     await outbox.enqueue(operation('existing'), 'user-a');
-    const before = storage.getItem(stateKey);
     const collision = { ...operation('z-collision'), idempotencyKey: 'stable-existing', payload: { different: true } };
     const raw = JSON.stringify({ operations: [operation('a-new'), collision] });
     storage.setItem(vaultKey, raw);
     await scope.bindUser('user-a');
     await outbox.refresh('user-a');
-    expect(outbox.list()).toEqual([operation('existing')]);
-    expect(storage.getItem(stateKey)).toBe(before);
+    expect(outbox.list()).toEqual([]);
+    expect(quarantineOperationRecords(await persistedQuarantine(storage)))
+      .toEqual(expect.arrayContaining([operation('existing'), collision]));
     expect(storage.getItem(vaultKey)).toBe(raw);
   });
 
@@ -258,12 +259,11 @@ for (const adapter of ['key-value', 'indexeddb']) {
       const outbox = new OutboxStore(storage, options);
       await scope.bindUser('user-a');
       await outbox.enqueue(operation(), 'user-a');
-      await outbox.update('sale-a', {
+      const before = await outbox.update('sale-a', {
         status: 'SYNCING', attemptCount: 1,
         lastAttemptAt: valid ? '2026-10-04T11:00:00.000Z' : 'not-a-date',
         lastErrorCode: 'NETWORK',
       }, 'user-a');
-      const before = outbox.list()[0];
       await scope.bindUser(null);
       const restartedScope = new OfflineSessionScope(storage, options);
       const restartedOutbox = new OutboxStore(storage, options);
@@ -275,7 +275,8 @@ for (const adapter of ['key-value', 'indexeddb']) {
       if (valid) {
         expect(restartedOutbox.list()[0]).toMatchObject({ id: 'sale-a', idempotencyKey: 'stable-sale-a', status: 'PENDING' });
       } else {
-        expect(restartedOutbox.list()).toEqual([before]);
+        expect(restartedOutbox.list()).toEqual([]);
+        expect(quarantineOperationRecords(await persistedQuarantine(storage, options))).toContainEqual(before);
         expect(restartedOutbox.pending(now)).toEqual([]);
         expect(nextOutboxReplayAt(restartedOutbox.list(), now)).toBeNull();
       }

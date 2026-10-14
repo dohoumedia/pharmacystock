@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
+import type { ReplaySaleDispatchContext } from '../offline/replaySaleTransport';
 
 export type PosProduct = { id: string; name: string; generic_name: string | null; brand_name: string | null; sku: string | null };
 export type PosBatch = { id: string; product_id: string; lot_number: string; expiry_date: string; selling_price: number | null; status: string };
@@ -11,7 +12,7 @@ export type CartLine = { product_id: string; quantity: number };
 export type PaymentInput = { method: Payment['method']; amount: number; provider?: string; external_reference?: string };
 export type SaleQuote = { total_amount: number; items: { product_id: string; batch_id: string; quantity: number; unit_price: number; line_total: number; expiry_date: string }[] };
 
-type SalesDatabase = { public: { Tables: {
+export type SalesDatabase = { public: { Tables: {
   products: { Row: PosProduct & { organization_id?: string; status?: string }; Insert: never; Update: never; Relationships: [] };
   batches: { Row: PosBatch & { organization_id?: string; branch_id?: string }; Insert: never; Update: never; Relationships: [] };
   sales: { Row: Sale; Insert: never; Update: never; Relationships: [] };
@@ -47,8 +48,13 @@ export async function quoteSale(organizationId: string, branchId: string, lines:
   return data;
 }
 
-export async function completeSale(input: { organizationId: string; branchId: string; saleNumber: string; lines: CartLine[]; payments: PaymentInput[]; idempotencyKey: string; notes?: string; customerId?: string | null }): Promise<string> {
-  const { data, error } = await db.rpc('complete_sale_with_customer', { p_organization_id: input.organizationId, p_branch_id: input.branchId, p_sale_number: input.saleNumber, p_lines: input.lines, p_payments: input.payments, p_idempotency_key: input.idempotencyKey, p_notes: input.notes?.trim() || null, p_customer_id: input.customerId ?? null });
+export async function completeSale(input: { organizationId: string; branchId: string; saleNumber: string; lines: CartLine[]; payments: PaymentInput[]; idempotencyKey: string; notes?: string; customerId?: string | null }, replay?: ReplaySaleDispatchContext): Promise<string> {
+  const guarded = replay
+    ? (await import('../offline/replaySaleTransport')).createReplaySaleTransport(supabase, replay)
+    : undefined;
+  const request = (guarded?.client ?? db).rpc('complete_sale_with_customer', { p_organization_id: input.organizationId, p_branch_id: input.branchId, p_sale_number: input.saleNumber, p_lines: input.lines, p_payments: input.payments, p_idempotency_key: input.idempotencyKey, p_notes: input.notes?.trim() || null, p_customer_id: input.customerId ?? null });
+  const { data, error } = await request;
+  guarded?.throwIfSkipped();
   if (error) throw error;
   return data;
 }
