@@ -1,9 +1,7 @@
+import { parseLocaleNumber } from './numericInput';
 export function parsePositiveSellingPrice(value: string): number | null {
-  const trimmed = value.trim();
-  if (!/^(?:\d+|\d*[.,]\d+)$/.test(trimmed)) return null;
-  const normalized = trimmed.replace(',', '.');
-  const amount = Number(normalized);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
+  const amount = parseLocaleNumber(value);
+  return amount !== null && amount > 0 ? amount : null;
 }
 
 export function canRemediateMissingBatchPrice({

@@ -11,6 +11,7 @@ type AuthContextValue = {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  signUp: (email: string, password: string) => Promise<boolean>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -50,6 +51,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
         await lifecycleRef.current?.acceptSignedOut();
+      },
+      signUp: async (email, password) => {
+        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+        if (error) throw error;
+        if (data.session) await lifecycleRef.current?.acceptSession(data.session);
+        return Boolean(data.session);
       },
     }),
     [session, loading],

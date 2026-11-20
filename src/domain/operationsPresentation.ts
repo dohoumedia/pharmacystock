@@ -23,7 +23,7 @@ export function formatReportDate(value: string | null, locale: string): string {
 export function formatCurrency(value: number | null | undefined, locale: string, currency: string | null | undefined): string {
   const amount = value ?? 0;
   const code = currency?.trim().toUpperCase();
-  if (!code) return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(amount);
+  if (!code) return '—';
   try {
     return new Intl.NumberFormat(locale, { style: 'currency', currency: code }).format(amount);
   } catch {

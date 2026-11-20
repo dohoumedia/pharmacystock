@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../i18n/useTranslation';
 import type { BatchSafetyStatus } from '@/domain/inventorySafety';
 import { colors, radii, spacing } from '@/theme/tokens';
 

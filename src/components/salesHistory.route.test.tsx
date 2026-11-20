@@ -1,0 +1,14 @@
+import type { ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it, vi } from 'vitest';
+import SalesScreen from '../../app/sales';
+vi.mock('../i18n/useTranslation', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock('../providers/OrganizationProvider', () => ({ useOrganization: () => ({ organization: { id: 'org', name: 'Pharmacy' }, branch: { id: 'branch', name: 'Main' }, can: (key: string) => key === 'sale.read' }) }));
+vi.mock('../providers/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'user' } }) }));
+vi.mock('../providers/ConnectivityProvider', () => ({ useConnectivity: () => ({ isOnline: true }) }));
+vi.mock('../services/coreCompletion', () => ({ loadOrganizationSettings: vi.fn() }));
+vi.mock('react-native', () => ({ ScrollView: ({ children }: { children: ReactNode }) => <main>{children}</main>, Text: ({ children }: { children: ReactNode }) => <span>{children}</span> }));
+vi.mock('./ui', () => ({ Screen: ({ children }: { children: ReactNode }) => <section>{children}</section>, Stack: ({ children }: { children: ReactNode }) => <div>{children}</div>, PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
+vi.mock('./SalesHistory', () => ({ SalesHistory: ({ organizationId, branchId }: { organizationId: string; branchId: string }) => <div>History for {organizationId}/{branchId}</div> }));
+vi.mock('./SaleDetails', () => ({ SaleDetails: () => <div>Detail</div> }));
+describe('independent read-only sales history route', () => { it('renders branch history with sale.read and no sale.create permission', () => { const html = renderToStaticMarkup(<SalesScreen />); expect(html).toContain('History for org/branch'); expect(html).not.toContain('pos.cart'); }); });

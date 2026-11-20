@@ -3,6 +3,12 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      staff_invitations: {
+        Row: { id: string; organization_id: string; branch_id: string; email: string; display_name: string; role_id: string; invited_by: string; status: 'pending' | 'accepted' | 'cancelled'; expires_at: string; accepted_by: string | null; accepted_at: string | null; created_at: string };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       organizations: {
         Row: { id: string; name: string; slug: string; status: string; country_code: string | null; currency_code: string; timezone: string; default_locale: string; created_at: string; updated_at: string };
         Insert: { id?: string; name: string; slug: string; status?: string; country_code?: string | null; currency_code?: string; timezone?: string; default_locale?: string; created_at?: string; updated_at?: string };
@@ -70,8 +76,8 @@ export type Database = {
         Relationships: [];
       };
       products: {
-        Row: { id: string; organization_id: string; category_id: string | null; manufacturer_id: string | null; name: string; generic_name: string | null; brand_name: string | null; strength: string | null; dosage_form: string | null; package_size: string | null; sku: string | null; status: string; archived_at: string | null; created_at: string; updated_at: string };
-        Insert: { id?: string; organization_id: string; category_id?: string | null; manufacturer_id?: string | null; name: string; generic_name?: string | null; brand_name?: string | null; strength?: string | null; dosage_form?: string | null; package_size?: string | null; sku?: string | null; status?: string; archived_at?: string | null; created_at?: string; updated_at?: string };
+        Row: { id: string; organization_id: string; category_id: string | null; manufacturer_id: string | null; name: string; generic_name: string | null; brand_name: string | null; strength: string | null; dosage_form: string | null; stock_unit?: string; package_size: string | null; sku: string | null; status: string; archived_at: string | null; created_at: string; updated_at: string };
+        Insert: { id?: string; organization_id: string; category_id?: string | null; manufacturer_id?: string | null; name: string; generic_name?: string | null; brand_name?: string | null; strength?: string | null; dosage_form?: string | null; stock_unit?: string; package_size?: string | null; sku?: string | null; status?: string; archived_at?: string | null; created_at?: string; updated_at?: string };
         Update: Partial<Database['public']['Tables']['products']['Insert']>;
         Relationships: [];
       };
@@ -113,6 +119,24 @@ export type Database = {
       };
     };
     Functions: {
+      read_operational_report: { Args: { p_organization_id: string; p_branch_id: string; p_report: string; p_start: string; p_end: string; p_search?: string; p_state?: string; p_supplier?: string; p_days?: number; p_page?: number; p_product_id?: string | null }; Returns: Json };
+      my_membership_unavailable: { Args: Record<string, never>; Returns: boolean };
+      staff_directory_details: { Args: { p_organization_id: string }; Returns: { user_id: string; email: string | null; access_changed_at: string }[] };
+      maintain_staff_access: { Args: { p_membership_id: string; p_expected: Json; p_next: Json }; Returns: undefined };
+      search_catalog_products: { Args: { p_organization_id: string; p_search?: string; p_status?: string | null }; Returns: Database['public']['Tables']['products']['Row'][] };
+      search_catalog_batches: { Args: { p_organization_id: string; p_branch_id: string; p_search?: string }; Returns: Database['public']['Tables']['batches']['Row'][] };
+      search_inventory_stock: { Args: { p_organization_id: string; p_branch_id: string; p_search?: string }; Returns: Database['public']['Views']['inventory_balances']['Row'][] };
+      create_catalog_product: { Args: { p_organization_id: string; p_product: Json }; Returns: string };
+      maintain_product_barcode: { Args: { p_organization_id: string; p_product_id: string; p_action: string; p_barcode?: string | null; p_barcode_id?: string | null }; Returns: Database['public']['Tables']['product_barcodes']['Row'][] };
+      post_opening_stock: { Args: { p_organization_id: string; p_branch_id: string; p_product_id: string; p_lot_number: string; p_expiry_date: string; p_quantity: number; p_purchase_cost: number | null; p_selling_price: number; p_reason: string; p_idempotency_key: string }; Returns: string };
+
+      create_branch_with_access: { Args: { p_branch_id: string; p_organization_id: string; p_name: string; p_code: string | null; p_city: string | null; p_phone: string | null }; Returns: string };
+      complete_owner_setup: { Args: { p_name: string; p_branch_name: string; p_country_code: string | null; p_currency_code: string; p_timezone: string; p_locale: string }; Returns: Json };
+      invite_staff: { Args: { p_organization_id: string; p_email: string; p_display_name: string; p_role_id: string; p_branch_id: string }; Returns: string };
+      my_staff_invitations: { Args: Record<string, never>; Returns: { id: string; organization_name: string; branch_name: string; role_name_en: string; role_name_fr: string; expires_at: string }[] };
+      accept_staff_invitation: { Args: { p_invitation_id: string }; Returns: string };
+      cancel_staff_invitation: { Args: { p_invitation_id: string }; Returns: undefined };
+      owner_setup_progress: { Args: { p_organization_id: string; p_branch_id: string }; Returns: Json };
       create_product_with_barcode: {
         Args: {
           p_organization_id: string; p_name: string; p_generic_name?: string | null; p_brand_name?: string | null;

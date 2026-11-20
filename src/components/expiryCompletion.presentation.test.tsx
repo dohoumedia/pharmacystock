@@ -1,0 +1,28 @@
+import type { ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createInstance } from 'i18next';
+import { describe, expect, it, vi } from 'vitest';
+import { ExpiryBatchSummary, ExpiryHistoryDetail, ExpiryRiskLabel } from './ExpiryBatchDetails';
+import en from '../i18n/expiryReady.en.json';
+import fr from '../i18n/expiryReady.fr.json';
+import baseEn from '../i18n/en.json';
+import baseFr from '../i18n/fr.json';
+import prodEn from '../i18n/production.en.json';
+import prodFr from '../i18n/production.fr.json';
+import invEn from '../i18n/inventoryReady.en.json';
+import invFr from '../i18n/inventoryReady.fr.json';
+const translator = createInstance();
+void translator.init({ initAsync: false, lng: 'en', resources: { en: { translation: { ...baseEn, ...prodEn, ...invEn, ...en } }, fr: { translation: { ...baseFr, ...prodFr, ...invFr, ...fr } } } });
+vi.mock('../i18n/useTranslation', () => ({ useTranslation: () => ({ t: translator.t.bind(translator), i18n: translator }) }));
+vi.mock('react-native', () => ({ Text: ({ children }: { children: ReactNode }) => <span>{children}</span>, View: ({ children }: { children: ReactNode }) => <div>{children}</div>, StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('@/theme/tokens', async () => await import('../theme/tokens'));
+vi.mock('expo-router', () => ({ Link: ({ children }: { children: ReactNode }) => <a>{children}</a> }));
+vi.mock('./ui', () => ({ Surface: ({ children }: { children: ReactNode }) => <section>{children}</section> }));
+const batch = { id: 'batch', organization_id: 'org', branch_id: 'a', product_id: 'product', product_name: 'Medicine', lot_number: 'LOT-140', expiry_date: '2099-01-01', status: 'ACTIVE', stock_unit: 'tablet', purchase_cost: 1, selling_price: 2, notes: null, created_at: '', updated_at: '' };
+const balance = { organization_id: 'org', branch_id: 'a', batch_id: 'batch', product_id: 'product', on_hand_quantity: 8.75, reserved_quantity: 0, available_quantity: 8.75, last_movement_at: null };
+describe('expiry functional presentation', () => {
+  it('distinguishes configured expiry category from stock safety status', () => { const html = renderToStaticMarkup(<><ExpiryRiskLabel days={14} thresholds={[21, 7]} /><ExpiryBatchSummary batch={{ ...batch, status: 'RECALLED' }} balance={balance} branchName="East" /></>); for (const text of ['21', 'Medicine', 'LOT-140', 'East', en.expiryReady.blocked]) expect(html).toContain(text); expect(html).not.toContain(en.expiryReady.sellable); });
+  it('never turns a missing balance into zero availability', () => { const html = renderToStaticMarkup(<ExpiryBatchSummary batch={batch} balance={null} branchName="Main" />); expect(html).toContain(en.expiryReady.balanceUnavailable); expect(html).toContain(en.expiryReady.blocked); });
+  it('shows actual removal quantity and exact movement/action references in French', async () => { await translator.changeLanguage('fr'); const detail = { batch, balance, action: { id: 'action-accepted', organization_id: 'org', branch_id: 'a', batch_id: 'batch', action_type: 'SUPPLIER_RETURN' as const, quantity: 1.25, reason: 'Supplier authorization R-12', actor_user_id: 'user', metadata: {}, created_at: '2026-11-18T10:00:00Z' }, movement: { id: 'movement-accepted', organization_id: 'org', branch_id: 'a', batch_id: 'batch', movement_type: 'SUPPLIER_RETURN', quantity_delta: -1.25, unit_cost: 1, reason: 'Supplier authorization R-12', reference_type: 'EXPIRY_ACTION', reference_id: 'batch', idempotency_key: 'key', metadata: {}, occurred_at: '2026-11-18T10:00:00Z', created_at: '2026-11-18T10:00:00Z', created_by: 'user' } }; const html = renderToStaticMarkup(<ExpiryHistoryDetail detail={detail} branchName="Main" />); for (const text of ['1,25', '8,75', 'action-accepted', 'movement-accepted', 'R-12', fr.expiryReady.currentSnapshot]) expect(html).toContain(text); expect(html).not.toContain('expiryReady.'); await translator.changeLanguage('en'); });
+  it('explains status history without inventing a stock movement', () => { const detail = { batch, balance, action: { id: 'quarantine-history', organization_id: 'org', branch_id: 'a', batch_id: 'batch', action_type: 'QUARANTINE' as const, quantity: null, reason: 'Inspection', actor_user_id: 'user', metadata: {}, created_at: '2026-11-18T10:00:00Z' }, movement: null }; const html = renderToStaticMarkup(<ExpiryHistoryDetail detail={detail} branchName="Main" />); expect(html).toContain(en.expiryReady.noMovement); expect(html).toContain('quarantine-history'); });
+});

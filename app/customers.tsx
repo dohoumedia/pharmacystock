@@ -1,44 +1,52 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'expo-router';
-import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
-import { ReadModelStatus } from '@/components/ReadModelStatus';
-import { hasFreshMutationAuthorization } from '@/domain/mutationAuthorization';
-import { formatCustomerLocale } from '@/domain/operationsPresentation';
-import { LocalStore } from '@/offline/localStore';
-import { cacheCustomers, getCachedCustomers, isSnapshotStale, OPERATIONAL_READ_MODEL_MAX_AGE_MS } from '@/offline/readModels';
-import { useConnectivity } from '@/providers/ConnectivityProvider';
-import { useOrganization } from '@/providers/OrganizationProvider';
-import { archiveCustomer, createCustomer, loadCustomers, type Customer } from '@/services/coreCompletion';
-
-const localStore = new LocalStore();
-
-export default function CustomersScreen(){
-  const {t,i18n}=useTranslation();
-  const {organization,can,usingCachedData,contextSyncedAt}=useOrganization();
-  const {isOnline}=useConnectivity();
-  const [customers,setCustomers]=useState<Customer[]>([]);const[name,setName]=useState('');const[phone,setPhone]=useState('');const[email,setEmail]=useState('');const[notes,setNotes]=useState('');const[busy,setBusy]=useState(false);const[loading,setLoading]=useState(true);const[error,setError]=useState(false);const[syncedAt,setSyncedAt]=useState<string|null>(null);const[usingCache,setUsingCache]=useState(false);
-  const canRead=can('customer.read');const canManage=can('customer.manage');
-  const mutationsAllowed=hasFreshMutationAuthorization(isOnline,usingCachedData,contextSyncedAt);
-
-  const refresh=useCallback(async()=>{
-    if(!organization||!canRead)return;
-    setLoading(true);setError(false);
-    if(!isOnline){const cached=getCachedCustomers(localStore,organization.id);setCustomers(cached?.data??[]);setSyncedAt(cached?.syncedAt??null);setUsingCache(true);setLoading(false);return;}
-    try{const data=await loadCustomers(organization.id);const now=new Date().toISOString();cacheCustomers(localStore,organization.id,data,now);setCustomers(data);setSyncedAt(now);setUsingCache(false);}catch{const cached=getCachedCustomers(localStore,organization.id);if(cached){setCustomers(cached.data);setSyncedAt(cached.syncedAt);setUsingCache(true);}setError(true);}finally{setLoading(false);}
-  },[organization,canRead,isOnline]);
-
-  useEffect(()=>{const timer=setTimeout(()=>void refresh(),0);return()=>clearTimeout(timer);},[refresh]);
-
-  const add=async()=>{if(!organization||!name.trim()||!mutationsAllowed)return;setBusy(true);setError(false);try{await createCustomer({organizationId:organization.id,fullName:name,phone,email,preferredLocale:i18n.language==='en'?'en':'fr',notes});setName('');setPhone('');setEmail('');setNotes('');await refresh();}catch{setError(true);}finally{setBusy(false);}};
-  const archive=async(id:string)=>{if(!mutationsAllowed)return;setBusy(true);try{await archiveCustomer(id);await refresh();}catch{setError(true);}finally{setBusy(false);}};
-  const confirmArchive=(customer:Customer)=>Alert.alert(t('production.customers.archiveTitle'),t('production.customers.archiveConfirm',{name:customer.full_name}),[{text:t('common.cancel'),style:'cancel'},{text:t('sprint7.customers.archive'),style:'destructive',onPress:()=>void archive(customer.id)}]);
-
-  if(!organization)return <SafeAreaView style={s.safe}><View style={s.center}><Text>{t('organization.noOrganization')}</Text></View></SafeAreaView>;
-  if(!canRead)return <SafeAreaView style={s.safe}><View style={s.center}><Text>{t('sprint7.customers.cannotRead')}</Text><Link href="/" asChild><Pressable accessibilityRole="link" style={s.backLink}><Text style={s.link}>{t('organization.back')}</Text></Pressable></Link></View></SafeAreaView>;
-  const stale=isSnapshotStale(syncedAt?{data:customers,syncedAt}:null,OPERATIONAL_READ_MODEL_MAX_AGE_MS);
-  return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.container}><View style={s.header}><View><Text accessibilityRole="header" style={s.title}>{t('sprint7.customers.title')}</Text><Text style={s.sub}>{t('sprint7.customers.subtitle')}</Text></View><Link href="/" asChild><Pressable accessibilityRole="link" style={s.backLink}><Text style={s.link}>{t('organization.back')}</Text></Pressable></Link></View><ReadModelStatus loading={loading} usingCachedData={usingCache} stale={stale} syncedAt={syncedAt} hasData={customers.length>0}/>{error?<Text accessibilityRole="alert" style={s.error}>{t('production.customers.refreshFailed')}</Text>:null}
-  {canManage?<View style={s.card}><Text style={s.section}>{t('production.customers.addTitle')}</Text><TextInput editable={mutationsAllowed&&!busy} accessibilityLabel={t('sprint7.customers.name')} style={s.input} placeholder={t('sprint7.customers.name')} value={name} onChangeText={setName}/><TextInput editable={mutationsAllowed&&!busy} accessibilityLabel={t('sprint7.customers.phone')} style={s.input} placeholder={t('sprint7.customers.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad"/><TextInput editable={mutationsAllowed&&!busy} accessibilityLabel={t('sprint7.customers.email')} style={s.input} placeholder={t('sprint7.customers.email')} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address"/><TextInput editable={mutationsAllowed&&!busy} accessibilityLabel={t('sprint7.customers.notes')} style={s.input} placeholder={t('sprint7.customers.notes')} value={notes} onChangeText={setNotes}/><Pressable accessibilityRole="button" disabled={busy||!name.trim()||!mutationsAllowed} onPress={()=>void add()} style={[s.primary,(!mutationsAllowed||busy||!name.trim())&&s.disabled]}><Text style={s.primaryText}>{busy?t('common.loading'):t('sprint7.customers.add')}</Text></Pressable>{!mutationsAllowed?<Text accessibilityRole="alert" style={s.meta}>{t(usingCachedData?'production.customers.freshAuthorizationRequired':'production.customers.onlineOnly')}</Text>:null}</View>:null}
-  <View style={s.card}><Text style={s.section}>{t('sprint7.customers.title')}</Text>{loading&&customers.length===0?<Text style={s.meta}>{t('common.loading')}</Text>:customers.length===0?<Text style={s.meta}>{t('sprint7.customers.noCustomers')}</Text>:customers.map(c=><View key={c.id} style={s.row}><View style={s.grow}><Text style={s.bold}>{c.full_name}</Text><Text style={s.meta}>{[c.phone,c.email,formatCustomerLocale(c.preferred_locale,t)].filter(Boolean).join(' · ')}</Text></View>{canManage?<Pressable accessibilityRole="button" accessibilityLabel={`${t('sprint7.customers.archive')} ${c.full_name}`} disabled={!mutationsAllowed||busy} onPress={()=>confirmArchive(c)} style={s.action}><Text style={[s.danger,(!mutationsAllowed||busy)&&s.disabledText]}>{t('sprint7.customers.archive')}</Text></Pressable>:null}</View>)}</View></ScrollView></SafeAreaView>;
+import { useSettingsRevision } from '../src/hooks/useSettingsRevision';
+import { loadOrganizationSettings } from '../src/services/coreCompletion';
+import { LocalStore } from '../src/offline/localStore';
+import { cacheOrganizationSettings, getCachedOrganizationSettings } from '../src/offline/readModels';
+import { useEffect, useState } from 'react';
+import { ScrollView, Text } from 'react-native';
+import { useTranslation } from '../src/i18n/useTranslation';
+import { Alert, Button, PageHeader, Screen, Stack, Surface } from '../src/components/ui';
+import { CustomerDirectory } from '../src/components/CustomerDirectory';
+import { CustomerEditor } from '../src/components/CustomerEditor';
+import { SalesHistory } from '../src/components/SalesHistory';
+import { SaleDetails } from '../src/components/SaleDetails';
+import { useOrganization } from '../src/providers/OrganizationProvider';
+import { useAuth } from '../src/providers/AuthProvider';
+import { useConnectivity } from '../src/providers/ConnectivityProvider';
+import { hasFreshMutationAuthorization } from '../src/domain/mutationAuthorization';
+import { effectiveTimezone } from '../src/domain/businessSettings';
+import type { Customer } from '../src/services/coreCompletion';
+const store = new LocalStore();
+export default function CustomersScreen() {
+  const { t } = useTranslation(); const { user } = useAuth(); const { organization, can } = useOrganization();
+  if (!user || !organization) return <Text>{t('organization.noOrganization')}</Text>;
+  if (!can('customer.read')) return <Alert tone="warning" title={t('sprint7.customers.cannotRead')} />;
+  return <CustomerWorkspace key={`${user.id}:${organization.id}`} organizationId={organization.id} userId={user.id} />;
 }
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F6F8FC'},container:{padding:24,gap:16,maxWidth:900,width:'100%',alignSelf:'center'},center:{flex:1,alignItems:'center',justifyContent:'center',gap:12},header:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between',gap:12},title:{fontSize:28,fontWeight:'800',color:'#102A5C'},sub:{color:'#667085',marginTop:4},card:{backgroundColor:'#fff',padding:18,borderRadius:16,gap:12},section:{fontSize:18,fontWeight:'700',color:'#102A5C'},input:{borderWidth:1,borderColor:'#D0D5DD',borderRadius:10,padding:12,minHeight:44},primary:{backgroundColor:'#102A5C',padding:12,borderRadius:10,alignSelf:'flex-start',minHeight:44,justifyContent:'center'},primaryText:{color:'#fff',fontWeight:'700'},row:{flexDirection:'row',flexWrap:'wrap',gap:12,alignItems:'center',paddingVertical:10,borderBottomWidth:1,borderBottomColor:'#EAECF0'},grow:{flex:1,minWidth:200},action:{minHeight:44,justifyContent:'center'},backLink:{minWidth:44,minHeight:44,paddingHorizontal:12,justifyContent:'center'},link:{color:'#102A5C',fontWeight:'700'},bold:{fontWeight:'700',color:'#101828'},meta:{color:'#667085'},danger:{color:'#B42318',fontWeight:'700'},error:{color:'#B42318',fontWeight:'600'},disabled:{opacity:.5},disabledText:{opacity:.45}});
+function CustomerWorkspace({ organizationId, userId }: { organizationId: string; userId: string }) {
+  const { t } = useTranslation(); const { organization, configurationBranches, can, usingCachedData, contextSyncedAt } = useOrganization(); const { isOnline } = useConnectivity();
+  const [customer, setCustomer] = useState<Customer | null>(null); const [editing, setEditing] = useState(false); const [creating, setCreating] = useState(false); const [revision, setRevision] = useState(0); const [saved, setSaved] = useState(false);
+  const settingsRevision = useSettingsRevision(organizationId);
+  const [footer, setFooter] = useState<string | null>(() => getCachedOrganizationSettings(store, organizationId)?.data?.receipt_footer ?? null);
+  useEffect(() => { let active = true; if (isOnline) void loadOrganizationSettings(organizationId).then(settings => { if (active) { cacheOrganizationSettings(store, organizationId, settings); setFooter(settings?.receipt_footer ?? null); } }).catch(() => { /* Retain synchronized receipt settings; no mutation is inferred. */ }); return () => { active = false; }; }, [organizationId, isOnline, settingsRevision]);
+  const [sale, setSale] = useState<{ id: string; branchId: string } | null>(null);
+  const writable = can('customer.manage') && hasFreshMutationAuthorization(isOnline, usingCachedData, contextSyncedAt);
+  const saleBranch = configurationBranches.find(b => b.id === sale?.branchId);
+  const context = { timezone: effectiveTimezone(organization?.timezone, saleBranch?.timezone), address: [saleBranch?.address_line1, saleBranch?.address_line2, saleBranch?.city, saleBranch?.country_code || organization?.country_code].filter(Boolean).join(', '), contact: [saleBranch?.phone, saleBranch?.email].filter(Boolean).join(' · ') };
+  const select = (value: Customer) => { setCustomer(value); setEditing(false); setCreating(false); setSale(null); setSaved(false); };
+  return <ScrollView><Screen style={{ maxWidth: 1000, width: '100%', alignSelf: 'center' }}><Stack>
+    <PageHeader title={t('sprint7.customers.title')} subtitle={t('customersReady.scope')} />
+    {can('customer.manage') ? <Button label={t('customersReady.create')} disabled={!writable || editing || creating} onPress={() => { setCreating(true); setEditing(false); setSaved(false); }} /> : <Text>{t('customersReady.manageRequired')}</Text>}
+    {saved ? <Alert tone="success" title={t('customersReady.saved')} /> : null}
+    {creating || editing && customer ? <CustomerEditor key={creating ? 'new' : customer!.id} organizationId={organizationId} userId={userId} customer={creating ? undefined : customer!} writable={writable} onSaved={value => { select(value); setRevision(r => r + 1); setSaved(true); }} onExisting={select} onCancel={() => { setCreating(false); setEditing(false); }} /> : null}
+    {customer && !editing && !creating ? <Surface><Stack><Text accessibilityRole="header">{customer.full_name}</Text><Text>{customer.phone} · {customer.email}</Text><Text>{t(`customersReady.${customer.status}`)}</Text><Text>{t('customersReady.language')}: {t(`customersReady.${customer.preferred_locale}`)}</Text>{customer.notes ? <Text>{customer.notes}</Text> : null}
+      <Text>{t('customersReady.consent', { marketing: t(customer.marketing_consent ? 'customersReady.yes' : 'customersReady.no'), service: t(customer.service_notification_consent ? 'customersReady.yes' : 'customersReady.no') })}</Text>
+      {can('customer.manage') ? <Button label={t('customersReady.edit')} variant="secondary" disabled={!writable || editing || creating} onPress={() => { setEditing(true); setCreating(false); setSaved(false); }} /> : null}
+      <Button label={t('customersReady.close')} variant="secondary" disabled={editing || creating} onPress={() => { setCustomer(null); setEditing(false); setSale(null); }} />
+      <Text accessibilityRole="header">{t('customersReady.history')}</Text><Text>{t('customersReady.historyScope')}</Text>
+      {can('sale.read') ? <SalesHistory key={customer.id} organizationId={organizationId} branchId={null} customerId={customer.id} branchNames={Object.fromEntries(configurationBranches.map(b => [b.id, b.name]))} timezone={effectiveTimezone(organization?.timezone)} online={isOnline} revision={revision} onOpen={(id, branchId) => setSale({ id, branchId })} /> : <Text>{t('customersReady.historyPermission')}</Text>}
+    </Stack></Surface> : null}
+    {sale && !editing && !creating && can('sale.read') ? <SaleDetails key={sale.id} organizationId={organizationId} branchId={sale.branchId} saleId={sale.id} userId={userId} footer={footer} business={organization?.name ?? ''} branchName={saleBranch?.name ?? sale.branchId} {...context} canRefund={can('sale.refund') && hasFreshMutationAuthorization(isOnline, usingCachedData, contextSyncedAt)} online={isOnline} onClose={() => setSale(null)} onChanged={() => setRevision(r => r + 1)} /> : null}
+    <CustomerDirectory organizationId={organizationId} userId={userId} online={isOnline} disabled={editing || creating} revision={revision} onSelect={select} />
+  </Stack></Screen></ScrollView>;
+}

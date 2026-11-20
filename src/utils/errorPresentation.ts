@@ -3,6 +3,11 @@
  * Never render the original message, SQL details, or backend code to users.
  */
 export type ErrorPresentationKey =
+  | 'catalogReady.errors.unitLocked'
+  | 'catalogReady.errors.batchMismatch'
+  | 'catalogReady.errors.priceChanged'
+  | 'catalogReady.errors.retryMismatch'
+  | 'catalogReady.errors.invalidValues'
   | 'production.readModel.noCachedData'
   | 'production.error.duplicateBarcode'
   | 'production.error.duplicateValue'
@@ -49,6 +54,12 @@ function normalized(error: unknown) {
 /** Returns a localized presentation key, never an untrusted backend string. */
 export function errorPresentationKey(error: unknown): ErrorPresentationKey {
   const { code, all } = normalized(error);
+
+  if (all.includes('stock_unit_locked')) return 'catalogReady.errors.unitLocked';
+  if (all.includes('opening_stock_batch_mismatch')) return 'catalogReady.errors.batchMismatch';
+  if (all.includes('batch_price_changed')) return 'catalogReady.errors.priceChanged';
+  if (all.includes('idempotency_payload_mismatch')) return 'catalogReady.errors.retryMismatch';
+  if (all.includes('opening_stock_') || all.includes('invalid_batch_selling_price') || all.includes('receipt_row_invalid')) return 'catalogReady.errors.invalidValues';
 
   if (code === 'OFFLINE_CACHE_EMPTY') return 'production.readModel.noCachedData';
   if (code === 'BARCODE_ALREADY_EXISTS' || all.includes('barcode')) return 'production.error.duplicateBarcode';

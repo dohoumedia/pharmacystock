@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import { Link, useLocalSearchParams } from 'expo-router';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useTranslation } from '../src/i18n/useTranslation';
 import { formatDateOnly } from '@/utils/dateFormatting';
 import { errorPresentationKey } from '@/utils/errorPresentation';
+import { BatchProvenance } from '@/components/PurchasingDetails';
+import { CatalogSelector } from '@/components/CatalogSelector';
+import { BatchRepricing } from '@/components/BatchRepricing';
+import { productsByIds, searchBatches, searchProducts } from '@/services/catalogReadiness';
+import { parseLocaleNumber, validDateOnly } from '@/domain/numericInput';
+import { stockUnitLabel } from '@/domain/stockUnits';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { Alert, Button, FormField, TextField } from '@/components/ui/controls';
@@ -26,8 +32,6 @@ import { useOrganization } from '@/providers/OrganizationProvider';
 import {
   createBatch,
   loadBatchStockBalances,
-  loadBatches,
-  loadProducts,
   setMissingBatchSellingPrice,
   type Batch,
   type BatchStockBalance,
@@ -45,7 +49,14 @@ function SelectableChip({ label, selected, onPress }: { label: string; selected:
 }
 
 export default function BatchesScreen() {
+  const { organization, branch } = useOrganization();
+  const { batchId } = useLocalSearchParams<{ batchId?: string }>();
+  return <BatchesContent key={`${organization?.id}:${branch?.id}:${batchId ?? ''}`} />;
+}
+function BatchesContent() {
   const { t, i18n } = useTranslation();
+  const { batchId } = useLocalSearchParams<{ batchId?: string }>();
+  const [provenanceBatch, setProvenanceBatch] = useState<string | null>(batchId ?? null);
   const { width } = useWindowDimensions();
   const { isOnline } = useConnectivity();
   const { organization, branches, branch, setBranchId, can, usingCachedData: usingCachedPermissions } = useOrganization();
@@ -54,7 +65,8 @@ export default function BatchesScreen() {
   const [products, setProducts] = useState<ProductListItem[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [batchBalances, setBatchBalances] = useState<BatchStockBalance[]>([]);
-  const [productId, setProductId] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductListItem | null>(null);
+  const productId = selectedProduct?.id ?? null;
   const [lotNumber, setLotNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [purchaseCost, setPurchaseCost] = useState('');
@@ -64,6 +76,8 @@ export default function BatchesScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [status, setStatus] = useState<(typeof BATCH_STATUSES)[number]>('ACTIVE');
   const [notes, setNotes] = useState('');
+  const [batchPage, setBatchPage] = useState(0);
+  const [hasMoreBatches, setHasMoreBatches] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof FILTER_STATUSES)[number]>('ALL');
   const [loading, setLoading] = useState(false);
@@ -113,7 +127,9 @@ export default function BatchesScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [nextProducts, nextBatches] = await Promise.all([loadProducts(organizationId), loadBatches(organizationId, branchId)]);
+      const batchResult = await searchBatches(organizationId, branchId, query, batchPage);
+      const nextBatches = batchResult.items;
+      const nextProducts = (await productsByIds(organizationId, nextBatches.map((batch) => batch.product_id))).map((product) => ({ ...product, primaryBarcode: null }));
       const nextBatchBalances = await loadBatchStockBalances(
         organizationId,
         branchId,
@@ -125,10 +141,11 @@ export default function BatchesScreen() {
       cacheBatches(localStore, organizationId, branchId, nextBatches, nextSyncedAt);
       setProducts(nextProducts);
       setBatches(nextBatches);
+      setHasMoreBatches(batchResult.hasMore);
       setBatchBalances(nextBatchBalances);
       setSyncedAt(nextSyncedAt);
       setUsingCachedData(false);
-      setProductId((current) => (current && nextProducts.some((item) => item.id === current) ? current : (nextProducts[0]?.id ?? null)));
+
     } catch {
       if (requestId !== refreshRequest.current) return;
       setError(t('production.batchView.refreshFailed'));
@@ -136,7 +153,7 @@ export default function BatchesScreen() {
     } finally {
       if (requestId === refreshRequest.current) setLoading(false);
     }
-  }, [applyCachedReadModels, branchId, canRead, isOnline, organizationId, t]);
+  }, [applyCachedReadModels, branchId, canRead, isOnline, organizationId, query, batchPage, t]);
 
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), 0);
@@ -153,17 +170,18 @@ export default function BatchesScreen() {
         const name = productMap.get(batch.product_id) ?? '';
         return (
           (statusFilter === 'ALL' || safety === statusFilter) &&
-          (!needle || name.toLocaleLowerCase().includes(needle) || batch.lot_number.toLocaleLowerCase().includes(needle))
+          (isOnline || !needle || name.toLocaleLowerCase().includes(needle) || batch.lot_number.toLocaleLowerCase().includes(needle))
         );
       })
       .sort((left, right) => left.expiry_date.localeCompare(right.expiry_date));
-  }, [batches, productMap, query, statusFilter]);
+  }, [batches, productMap, query, statusFilter, isOnline]);
   const stale = isSnapshotStale(syncedAt ? { data: null, syncedAt } : null, OPERATIONAL_READ_MODEL_MAX_AGE_MS);
   const parsedSellingPrice = parsePositiveSellingPrice(sellingPrice);
   const unpricedBatches = useMemo(() => batches.filter((batch) => batch.selling_price === null), [batches]);
 
   const submit = async () => {
     if (!organizationId || !branchId || !productId || !lotNumber.trim() || !expiryDate.trim() || !mutationsAuthorized) return;
+    if (!validDateOnly(expiryDate.trim()) || (purchaseCost.trim() && (parseLocaleNumber(purchaseCost) === null || parseLocaleNumber(purchaseCost)! < 0))) { setError(t('catalogReady.openingInvalid')); return; }
     if (parsedSellingPrice === null) {
       setError(t('production.batchView.sellingPriceRequired'));
       return;
@@ -178,7 +196,7 @@ export default function BatchesScreen() {
         product_id: productId,
         lot_number: lotNumber.trim(),
         expiry_date: expiryDate.trim(),
-        purchase_cost: purchaseCost.trim() ? Number(purchaseCost) : null,
+        purchase_cost: purchaseCost.trim() ? parseLocaleNumber(purchaseCost) : null,
         selling_price: parsedSellingPrice,
         status,
         notes: notes.trim() || null,
@@ -238,8 +256,7 @@ export default function BatchesScreen() {
     value === null
       ? '—'
       : new Intl.NumberFormat(i18n.language, {
-          style: 'currency',
-          currency: organization?.currency_code ?? 'XOF',
+          ...(organization?.currency_code ? { style: 'currency' as const, currency: organization.currency_code } : {}),
           maximumFractionDigits: 2,
         }).format(value);
   const quantity = (value: number | null | undefined) =>
@@ -290,10 +307,11 @@ export default function BatchesScreen() {
           ))}
         </View>
 
+        {provenanceBatch && organizationId && branchId && can('purchase.read') ? <><BatchProvenance organizationId={organizationId} branchId={branchId} batchId={provenanceBatch} currency={organization?.currency_code || ''} /><Button variant="ghost" label={t('purchaseReady.close')} onPress={() => setProvenanceBatch(null)} /></> : null}
         <Surface tone="raised" style={styles.card}>
           <TextField
             accessibilityLabel={t('production.batchView.search')}
-            onChangeText={setQuery}
+            onChangeText={(value) => { setQuery(value); setBatchPage(0); }}
             placeholder={t('production.batchView.search')}
             style={styles.input}
             value={query}
@@ -330,9 +348,9 @@ export default function BatchesScreen() {
               {visibleBatches.map((batch) => (
                 <View key={batch.id} style={styles.tableRow}>
                   <Text style={[styles.batchName, styles.productColumn]}>
-                    {productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)}
+                    {productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)} / {stockUnitLabel(products.find((item) => item.id === batch.product_id)?.stock_unit, t)}
                   </Text>
-                  <Text style={[styles.meta, styles.lotColumn]}>{batch.lot_number}</Text>
+                  <View style={styles.lotColumn}><Text style={styles.meta}>{batch.lot_number}</Text>{can('purchase.read') ? <Button variant="ghost" label={t('purchaseReady.viewProvenance', { lot: batch.lot_number })} onPress={() => setProvenanceBatch(batch.id)} /> : null}</View>
                   <Text style={[styles.meta, styles.expiryColumn]}>
                     {formatDateOnly(batch.expiry_date, i18n.language)}
                   </Text>
@@ -353,10 +371,11 @@ export default function BatchesScreen() {
               return <View accessibilityRole="summary" key={batch.id} style={[styles.batchCard, safety !== 'ACTIVE' && styles.batchCardAttention]}>
                 <View style={styles.headerRow}>
                   <View style={styles.grow}>
-                    <Text style={styles.batchName}>{productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)}</Text>
+                    <Text style={styles.batchName}>{productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)} / {stockUnitLabel(products.find((item) => item.id === batch.product_id)?.stock_unit, t)}</Text>
                     <Text style={styles.meta}>
                       {t('catalog.lotNumber')}: {batch.lot_number}
                     </Text>
+                    {can('purchase.read') ? <Button variant="ghost" label={t('purchaseReady.viewProvenance', { lot: batch.lot_number })} onPress={() => setProvenanceBatch(batch.id)} /> : null}
                   </View>
                   <BatchStatusBadge status={batchSafetyStatus(batch.status, batch.expiry_date)} />
                 </View>
@@ -381,6 +400,8 @@ export default function BatchesScreen() {
           )}
         </Surface>
 
+        <View style={styles.chips}><Button variant="ghost" disabled={!isOnline || loading || batchPage === 0} label={t('catalogReady.previous')} onPress={() => setBatchPage((value) => value - 1)} /><Text>{t('catalogReady.page', { page: batchPage + 1 })}</Text><Button variant="ghost" disabled={!isOnline || loading || !hasMoreBatches} label={t('catalogReady.next')} onPress={() => setBatchPage((value) => value + 1)} /></View>
+        {canUpdate && mutationsAuthorized && organizationId && branchId ? <BatchRepricing key={`${organizationId}:${branchId}`} organizationId={organizationId} branchId={branchId} currencyCode={organization?.currency_code || ''} onSaved={refresh} /> : null}
         {canUpdate && mutationsAuthorized && unpricedBatches.length > 0 ? (
           <Surface tone="raised" style={styles.card}>
             <CardTitle>{t('production.batchView.unpricedTitle')}</CardTitle>
@@ -391,7 +412,7 @@ export default function BatchesScreen() {
               return (
                 <View key={batch.id} style={styles.remediationRow}>
                   <View style={styles.grow}>
-                    <Text style={styles.batchName}>{productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)}</Text>
+                    <Text style={styles.batchName}>{productMap.get(batch.product_id) ?? batch.product_id.slice(0, 8)} / {stockUnitLabel(products.find((item) => item.id === batch.product_id)?.stock_unit, t)}</Text>
                     <Text style={styles.meta}>{t('catalog.lotNumber')}: {batch.lot_number}</Text>
                   </View>
                   <FormField
@@ -423,20 +444,13 @@ export default function BatchesScreen() {
           </Surface>
         ) : null}
 
-        {canCreate && mutationsAuthorized && branchId && products.length > 0 ? (
+        {canCreate && mutationsAuthorized && branchId ? (
           <Surface tone="default" style={styles.card}>
             <CardTitle>{t('catalog.addBatch')}</CardTitle>
             <Text style={styles.sectionLabel}>{t('catalog.selectProduct')}</Text>
-            <View style={styles.chips}>
-              {products.slice(0, 50).map((product) => (
-                <SelectableChip
-                  key={product.id}
-                  label={product.name}
-                  onPress={() => setProductId(product.id)}
-                  selected={product.id === productId}
-                />
-              ))}
-            </View>
+            <SupportingText>{t('catalogReady.identityOnly')}</SupportingText>
+            <Link href="/opening-stock" asChild><Button label={t('catalogReady.openingStock')} variant="secondary" /></Link>
+            <CatalogSelector scope={`${organizationId}:${branchId}`} label={t('catalog.selectProduct')} selectedLabel={selectedProduct?.name} disabled={saving} load={(query, page) => searchProducts(organizationId!, query, page)} renderLabel={(item) => `${item.name} / ${item.sku ?? ''} / ${stockUnitLabel(item.stock_unit, t)}`} onSelect={(item) => { setSelectedProduct({ ...item, primaryBarcode: null }); setProducts((current) => current.some((product) => product.id === item.id) ? current : [...current, { ...item, primaryBarcode: null }]); }} />
             <TextField accessibilityLabel={t('catalog.lotNumber')} value={lotNumber} onChangeText={setLotNumber} placeholder={t('catalog.lotNumber')} style={styles.input} />
             <TextField
               accessibilityLabel={t('catalog.expiryDate')}

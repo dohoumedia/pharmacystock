@@ -6,6 +6,8 @@ import { AppShell } from './AppShell';
 let windowWidth = 1440;
 let pathname = '/inventory';
 let french = false;
+let runtimePlatform = 'web';
+let navigationTextColors: unknown[] = [];
 
 vi.mock('expo-router', () => ({
   Link: ({ children }: { children: ReactNode }) => children,
@@ -59,6 +61,8 @@ vi.mock('@/theme/tokens', () => ({
   typography: { body: {}, supporting: {}, metadata: {}, cardTitle: {} },
 }));
 
+vi.mock('./NotificationBadge', () => ({ NotificationBadge: () => <span>notification-badge</span> }));
+
 vi.mock('./SyncStatusBadge', () => ({ SyncStatusBadge: () => <span>sync-status</span> }));
 
 vi.mock('react-native', async () => {
@@ -68,6 +72,8 @@ vi.mock('react-native', async () => {
   };
 
   return {
+    Platform: { get OS() { return runtimePlatform; } },
+    KeyboardAvoidingView: ({ children, behavior }: { children: ReactNode; behavior: string }) => React.createElement('div', { 'data-keyboard-behavior': behavior }, children),
     Pressable: ({
       accessibilityRole,
       accessibilityLabel,
@@ -92,7 +98,11 @@ vi.mock('react-native', async () => {
       }, children);
     },
     ScrollView: element('nav'),
-    Text: element('span'),
+    Text: ({ children, style, ...props }: { children?: ReactNode; style?: unknown }) => {
+      const flattened = Object.assign({}, ...([style].flat(Infinity).filter(Boolean) as object[]));
+      if (typeof children === 'string' && children.startsWith('production.navigation.')) navigationTextColors.push(flattened.color);
+      return React.createElement('span', props, children);
+    },
     View: element('div'),
     StyleSheet: {
       create: <T,>(styles: T) => styles,
@@ -106,6 +116,7 @@ describe('authenticated AppShell navigation', () => {
   beforeEach(() => {
     pathname = '/inventory';
     french = false;
+    runtimePlatform = 'web'; navigationTextColors = [];
   });
 
   it.each([
@@ -142,6 +153,30 @@ describe('authenticated AppShell navigation', () => {
     expect(home).toBeGreaterThanOrEqual(0);
     expect(home).toBeLessThan(pos);
     expect(pos).toBeLessThan(inventory);
+  });
+
+  it.each([1440, 900])('exposes Staff and Branches in the shell at width %s', (width) => {
+    windowWidth = width;
+    const markup = renderToStaticMarkup(<AppShell><main>screen</main></AppShell>);
+    expect(markup).toContain('setup.nav.staff'); expect(markup).toContain('setup.nav.branches');
+    expect(markup).toContain('production.navigation.purchasing');
+  });
+
+  it.each([['android', 'height'], ['ios', 'padding']])('keeps native content inside keyboard avoidance on %s', (platform, behavior) => {
+    runtimePlatform = platform; windowWidth = 390;
+    expect(renderToStaticMarkup(<AppShell><main>native-form</main></AppShell>)).toContain(`data-keyboard-behavior="${behavior}"`);
+  });
+
+  it('gives inactive phone navigation readable text while preserving the selected color', () => {
+    windowWidth = 390;
+    renderToStaticMarkup(<AppShell><main>screen</main></AppShell>);
+    expect(navigationTextColors).toContain('#fff');
+    expect(navigationTextColors.filter(color => color !== '#fff')).toEqual(['#666', '#666']);
+  });
+
+  it('exposes More in the phone bottom navigation', () => {
+    windowWidth = 390;
+    expect(renderToStaticMarkup(<AppShell><main>screen</main></AppShell>)).toContain('setup.nav.more');
   });
 
   it('labels icon-only tablet navigation for assistive technology', () => {

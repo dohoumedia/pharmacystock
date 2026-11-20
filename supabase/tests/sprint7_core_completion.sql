@@ -59,6 +59,8 @@ do $$ begin
 end $$;
 
 select public.refresh_expiry_alerts('77aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','77aaaaaa-1111-1111-1111-aaaaaaaaaaaa');
+-- The operational inbox refresh intentionally supersedes insert-trigger fanout.
+select public.refresh_operational_notifications('77aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
 do $$ begin
  if not exists(select 1 from public.notifications where organization_id='77aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and recipient_user_id='77000000-0000-0000-0000-000000000001' and type='EXPIRY_ALERT') then raise exception 'S7-T-009 expiry notification fanout failed'; end if;
  if not exists(select 1 from public.audit_logs where organization_id='77aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and entity_type='customers') then raise exception 'S7-T-010 customer audit event missing'; end if;

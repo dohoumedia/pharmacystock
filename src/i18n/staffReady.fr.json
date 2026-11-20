@@ -1,0 +1,60 @@
+{
+  "staffReady": {
+    "subtitle": "Gérez les collègues, les invitations et l’accès aux agences de la pharmacie.",
+    "search": "Rechercher par nom ou adresse e-mail",
+    "noMatches": "Aucun membre ne correspond à cette recherche ou à ce statut.",
+    "unnamed": "Membre du personnel",
+    "emailUnavailable": "Adresse e-mail indisponible",
+    "status": {
+      "all": "Tout le personnel",
+      "active": "Actif",
+      "suspended": "Désactivé",
+      "revoked": "Révoqué",
+      "invited": "Invité"
+    },
+    "roles": {
+      "OWNER": "Possède et gère la pharmacie, le personnel et les paramètres de l’entreprise.",
+      "MANAGER": "Gère le personnel, les agences et les opérations quotidiennes.",
+      "PHARMACIST": "Travaille avec le stock, les réceptions, les ventes et les clients.",
+      "INVENTORY_OFFICER": "Gère le stock, les achats et les opérations d’inventaire.",
+      "CASHIER": "Effectue les ventes et travaille avec les clients et le stock disponible.",
+      "AUDITOR": "Consulte les opérations et rapports sans modifier le stock ni les ventes.",
+      "custom": "Utilise les autorisations configurées pour ce rôle existant."
+    },
+    "joined": "Adhésion créée le : {{date}}",
+    "updated": "Dernière modification de l’adhésion ou de l’accès : {{date}}",
+    "none": "Aucune agence attribuée",
+    "inactiveBranch": "Agence inactive ou indisponible",
+    "changeRole": "Choisir un autre rôle",
+    "branchHint": "Les modifications nécessitent une confirmation. Retirer toutes les agences prive le personnel ordinaire d’accès aux agences.",
+    "managerAccess": "Les responsables d’agences peuvent travailler dans toutes les agences actives de la pharmacie, selon les autorisations de leur rôle existant.",
+    "prepareSuspended": "L’adhésion sera préparée avec le statut désactivé. Réactivez-la séparément lorsque son rôle et ses accès sont prêts.",
+    "branchSelectionHint": "L’agence actuelle est conservée tant qu’elle reste accessible ; sinon, la première agence active attribuée est sélectionnée. Aucun paramètre d’agence par défaut distinct n’existe.",
+    "managementOnly": "Visible pour la gestion ; aucun accès opérationnel attribué.",
+    "addBranch": "Ajouter l’accès : {{name}}",
+    "removeBranch": "Retirer l’accès : {{name}}",
+    "roleChange": "Attribuer le rôle {{role}}.",
+    "deactivate": "Désactiver l’adhésion",
+    "reactivate": "Réactiver l’adhésion",
+    "deactivateHint": "Suspendre l’accès de ce collègue à la pharmacie. Son adhésion, ses agences et son identité historique sont conservées.",
+    "reactivateHint": "Rétablir l’accès avec le rôle et les agences de cette adhésion.",
+    "protected": "Votre propre adhésion et celles des propriétaires sont protégées des modifications courantes du personnel.",
+    "confirm": "Vérifier la modification pour {{name}}",
+    "apply": "Confirmer la modification",
+    "historyPreserved": "Les opérations historiques et les références au personnel sont conservées.",
+    "retryHint": "En cas de coupure, réessayez la même modification. Actualisez la liste si un autre responsable l’a modifiée.",
+    "saved": "Modification enregistrée. La liste est actualisée depuis la pharmacie.",
+    "refreshHint": "L’accès des collègues est actualisé à leur retour dans l’application et toutes les 30 secondes en ligne. Actualisez Personnel pour consulter la liste à jour.",
+    "noAccess": "L’accès à la pharmacie est indisponible",
+    "noAccessHint": "Votre adhésion est peut-être inactive ou sans agence active attribuée. Demandez au propriétaire de rétablir l’accès, puis réessayez.",
+    "invitedAt": "Invitation créée le : {{date}}",
+    "acceptedAt": "Acceptée le : {{date}}",
+    "reissue": "Renouveler l’invitation pour 7 jours",
+    "shareInstructions": "{{pharmacy}} invite {{email}}. Ouvrez {{url}}, connectez-vous ou inscrivez-vous avec cette adresse, confirmez l’adresse de votre compte, puis acceptez dans Invitations. L’accès s’ouvre après acceptation. Aucun e-mail d’invitation n’est envoyé. Vous pouvez recopier et partager ces instructions tant que l’invitation est en attente.",
+    "cancelConfirm": "Annuler l’invitation en attente pour {{email}} ?",
+    "acceptHint": "Connecté avec {{email}}. Acceptez pour rejoindre cette pharmacie avec le rôle et l’agence affichés. Si une invitation manque, a expiré ou est déjà utilisée, demandez au propriétaire de vérifier son statut ou de la renouveler.",
+    "errors": {
+      "changed": "L’accès a changé depuis le chargement. Annulez cette vérification, actualisez Personnel puis vérifiez l’adhésion avant de réessayer."
+    }
+  }
+}

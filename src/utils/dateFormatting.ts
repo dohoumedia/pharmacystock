@@ -14,17 +14,17 @@ export function formatDateOnly(value: string | null | undefined, locale: string)
 }
 
 /** Formats a timestamp/timestamptz as the user's local calendar date. */
-export function formatInstantDate(value: string | null | undefined, locale: string): string {
+export function formatInstantDate(value: string | null | undefined, locale: string, timezone?: string): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: timezone }).format(date);
 }
 
 /** Formats a timestamp/timestamptz as a localized date and time. */
-export function formatInstantDateTime(value: string | null | undefined, locale: string): string {
+export function formatInstantDateTime(value: string | null | undefined, locale: string, timezone?: string): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone }).format(date);
 }

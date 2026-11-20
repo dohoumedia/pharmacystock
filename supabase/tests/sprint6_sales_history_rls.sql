@@ -37,7 +37,7 @@ insert into public.batches(id,organization_id,branch_id,product_id,lot_number,ex
 ('6baaaaaa-4444-4444-4444-aaaaaaaaaaa2','6baaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','6baaaaaa-2222-2222-2222-aaaaaaaaaaaa','6baaaaaa-3333-3333-3333-aaaaaaaaaaaa','BLOCKED',current_date+30,1,2,'ACTIVE')
 on conflict(id) do nothing;
 
-set local role authenticated;
+-- Seed inventory as database owner: the history-reader cashier has no inventory.adjust.
 select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claim.sub','66100000-0000-0000-0000-000000000001',true);
 
@@ -88,12 +88,21 @@ from public.inventory_movements
 where idempotency_key='sales-history:blocked'
 limit 1;
 
-set local role authenticated;
+-- Exercise the history reads as the original branch-scoped cashier.
 select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claim.sub','66100000-0000-0000-0000-000000000001',true);
-
+set local role authenticated;
+-- A genuine allowed-branch sale proves the reader is active rather than seeing no data at all.
+select set_config('sales_history.allowed_sale',public.complete_sale_with_customer(
+ '6baaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','6baaaaaa-1111-1111-1111-aaaaaaaaaaaa','ALLOWED-SALE',
+ '[{"product_id":"6baaaaaa-3333-3333-3333-aaaaaaaaaaaa","quantity":1}]',
+ '[{"method":"CASH","amount":2}]','sales-history:allowed-sale')::text,true);
 do $$
 begin
+  if not exists(select 1 from public.sales where id=current_setting('sales_history.allowed_sale')::uuid)
+    or not exists(select 1 from public.sale_items where sale_id=current_setting('sales_history.allowed_sale')::uuid) then
+    raise exception 'SALES-HISTORY-RLS-005 allowed branch sale or item hidden';
+  end if;
   if exists(select 1 from public.sales where id='6baaaaaa-5555-5555-5555-aaaaaaaaaaaa') then
     raise exception 'SALES-HISTORY-RLS-001 blocked branch sale leaked';
   end if;

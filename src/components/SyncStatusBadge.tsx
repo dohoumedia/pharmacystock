@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../i18n/useTranslation';
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useSyncStatus } from '@/providers/SyncStatusProvider';
 import { colors, radii, spacing, touchTarget } from '@/theme/tokens';

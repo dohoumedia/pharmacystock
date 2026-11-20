@@ -22,13 +22,15 @@ export type InventoryMovementType =
 
 export type InventoryBalanceItem = InventoryBalance & {
   product_name: string;
+  stock_unit?: string;
   lot_number: string;
   expiry_date: string;
   batch_status: string;
+  selling_price?: number | null;
 };
 
-export async function loadInventoryBalances(organizationId: string, branchId: string): Promise<InventoryBalanceItem[]> {
-  const { data: balances, error } = await supabase
+export async function loadInventoryBalances(organizationId: string, branchId: string, suppliedBalances?: InventoryBalance[]): Promise<InventoryBalanceItem[]> {
+  const { data: balances, error } = suppliedBalances ? { data: suppliedBalances, error: null } : await supabase
     .from('inventory_balances')
     .select('*')
     .eq('organization_id', organizationId)
@@ -40,21 +42,23 @@ export async function loadInventoryBalances(organizationId: string, branchId: st
   const batchIds = balances.map((item) => item.batch_id);
   const productIds = [...new Set(balances.map((item) => item.product_id))];
   const [{ data: batches, error: batchError }, { data: products, error: productError }] = await Promise.all([
-    supabase.from('batches').select('id,lot_number,expiry_date,status').in('id', batchIds),
-    supabase.from('products').select('id,name').in('id', productIds),
+    supabase.from('batches').select('id,lot_number,expiry_date,status,selling_price').in('id', batchIds),
+    supabase.from('products').select('id,name,stock_unit').in('id', productIds),
   ]);
   if (batchError) throw batchError;
   if (productError) throw productError;
 
   const batchMap = new Map(batches.map((item) => [item.id, item]));
-  const productMap = new Map(products.map((item) => [item.id, item.name]));
+  const productMap = new Map(products.map((item) => [item.id, item]));
 
   return balances.map((item) => ({
     ...item,
-    product_name: productMap.get(item.product_id) ?? item.product_id.slice(0, 8),
+    stock_unit: productMap.get(item.product_id)?.stock_unit ?? 'unit',
+    product_name: productMap.get(item.product_id)?.name ?? item.product_id.slice(0, 8),
     lot_number: batchMap.get(item.batch_id)?.lot_number ?? item.batch_id.slice(0, 8),
     expiry_date: batchMap.get(item.batch_id)?.expiry_date ?? '',
     batch_status: batchMap.get(item.batch_id)?.status ?? 'UNKNOWN',
+    selling_price: batchMap.get(item.batch_id)?.selling_price ?? null,
   }));
 }
 
@@ -82,6 +86,7 @@ export async function postInventoryMovement(input: {
   unitCost?: number | null;
   metadata?: Json;
   idempotencyKey?: string;
+  occurredAt?: string;
 }): Promise<string> {
   const idempotencyKey = input.idempotencyKey ?? `manual:${Date.now()}:${Math.random().toString(36).slice(2)}`;
   const { data, error } = await supabase.rpc('post_inventory_movement', {
@@ -96,16 +101,17 @@ export async function postInventoryMovement(input: {
     p_reference_id: input.referenceId || null,
     p_unit_cost: input.unitCost ?? null,
     p_metadata: input.metadata ?? {},
-    p_occurred_at: new Date().toISOString(),
+    p_occurred_at: input.occurredAt ?? new Date().toISOString(),
   });
   if (error) throw error;
   return data;
 }
 
-export async function createStockCount(input: { organizationId: string; branchId: string; notes?: string }): Promise<StockCount> {
+export async function createStockCount(input: { organizationId: string; branchId: string; notes?: string; id?: string }): Promise<StockCount> {
   const { data, error } = await supabase
     .from('inventory_stock_counts')
     .insert({
+      ...(input.id ? { id: input.id } : {}),
       organization_id: input.organizationId,
       branch_id: input.branchId,
       notes: input.notes || null,

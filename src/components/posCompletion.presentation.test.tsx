@@ -1,0 +1,24 @@
+import type { ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createInstance } from 'i18next';
+import { describe, expect, it, vi } from 'vitest';
+import { Receipt } from './Receipt';
+import { QuoteAllocation } from './QuoteAllocation';
+import type { SaleDetailData } from '../services/posCompletion';
+import en from '../i18n/posReady.en.json';
+import fr from '../i18n/posReady.fr.json';
+import baseEn from '../i18n/en.json';
+import baseFr from '../i18n/fr.json';
+import catalogEn from '../i18n/catalogReady.en.json';
+import catalogFr from '../i18n/catalogReady.fr.json';
+const translator = createInstance();
+void translator.init({ initAsync: false, lng: 'en', resources: { en: { translation: { ...baseEn, ...catalogEn, ...en } }, fr: { translation: { ...baseFr, ...catalogFr, ...fr } } } });
+vi.mock('../i18n/useTranslation', () => ({ useTranslation: () => ({ t: translator.t.bind(translator), i18n: translator }) }));
+vi.mock('react-native', () => ({ Text: ({ children }: { children: ReactNode }) => <span>{children}</span>, View: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
+const detail = { sale: { sale_number: 'SALE-100', total_amount: 7.5, discount_total: 0, currency_code: 'CAD', completed_at: '2026-11-18T10:00:00Z', status: 'COMPLETED' }, items: [{ id: 'second', product_id: 'p', batch_id: 'b', quantity: 1.5, unit_price: 5, line_total: 7.5, inventory_movement_id: 'ledger-100' }], payments: [{ id: 'pay', method: 'CASH', amount: 7.5, tendered_amount: 10, change_amount: 2.5 }], products: [{ id: 'p', name: 'Medicine', stock_unit: 'bottle' }], batches: [{ id: 'b', lot_number: 'LOT-100', expiry_date: '2099-01-01' }], cashier: 'Counter Cashier', refunds: [], refundItems: [] } as unknown as SaleDetailData;
+describe('bilingual receipt and FEFO allocation', () => {
+  it.each(['en', 'fr'])('includes business, branch, cashier, items, tender/change and footer in %s', async locale => { await translator.changeLanguage(locale); const html = renderToStaticMarkup(<Receipt detail={detail} business="Counter Pharmacy" branch="Main Counter" footer="Thank you / Merci" />); for (const text of ['Counter Pharmacy', 'Main Counter', 'SALE-100', 'Counter Cashier', 'Medicine', 'LOT-100', 'ledger-100', 'Thank you / Merci']) expect(html).toContain(text); expect(html).toContain(locale === 'fr' ? '1,5' : '1.5'); expect(html).toContain(en.posReady.receiptTitle === translator.t('posReady.receiptTitle') ? 'Sales receipt' : 'Reçu de vente'); expect(html).not.toContain('posReady.'); expect(html).not.toContain('catalogReady.'); });
+  it('shows each actual FEFO lot quantity/expiry/price separately', () => { const html = renderToStaticMarkup(<QuoteAllocation currency="CAD" product={{ id: 'p', name: 'Medicine', sku: null, generic_name: null, brand_name: null }} quote={{ total_amount: 9, items: [{ product_id: 'p', batch_id: 'b1', lot_number: 'EARLY', expiry_date: '2098-01-01', quantity: 2, unit_price: 3, line_total: 6 }, { product_id: 'p', batch_id: 'b2', lot_number: 'LATER', expiry_date: '2099-01-01', quantity: 1, unit_price: 3, line_total: 3 }] }} />); for (const text of ['EARLY', 'LATER', '2098-01-01', '2099-01-01']) expect(html).toContain(text); });
+  it('retains noncash reference in receipts', () => { const changed = { ...detail, payments: [{ ...detail.payments[0]!, method: 'CARD' as const, tendered_amount: null, change_amount: null, external_reference: 'TERMINAL-123' }] }; expect(renderToStaticMarkup(<Receipt detail={changed} business="Pharmacy" branch="Main" />)).toContain('TERMINAL-123'); });
+  it('has complete matching EN/FR keys and interpolations', () => { expect(Object.keys(fr.posReady).sort()).toEqual(Object.keys(en.posReady).sort()); for (const key of Object.keys(en.posReady) as (keyof typeof en.posReady)[]) { expect(fr.posReady[key].trim()).toBeTruthy(); expect(fr.posReady[key].match(/{{\w+}}/g) ?? []).toEqual(en.posReady[key].match(/{{\w+}}/g) ?? []); } });
+});

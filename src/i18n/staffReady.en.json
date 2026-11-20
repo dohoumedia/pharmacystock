@@ -1,0 +1,60 @@
+{
+  "staffReady": {
+    "subtitle": "Manage colleagues, invitations and access to pharmacy branches.",
+    "search": "Search staff by name or email",
+    "noMatches": "No staff match this search or status.",
+    "unnamed": "Staff member",
+    "emailUnavailable": "Email unavailable",
+    "status": {
+      "all": "All staff",
+      "active": "Active",
+      "suspended": "Deactivated",
+      "revoked": "Revoked",
+      "invited": "Invited"
+    },
+    "roles": {
+      "OWNER": "Owns and manages the pharmacy, staff and business settings.",
+      "MANAGER": "Manages staff, branches and daily pharmacy operations.",
+      "PHARMACIST": "Works with stock, receiving, sales and customers.",
+      "INVENTORY_OFFICER": "Manages stock, purchasing and inventory operations.",
+      "CASHIER": "Processes sales and works with customers and available stock.",
+      "AUDITOR": "Reads operational records and reports without changing stock or sales.",
+      "custom": "Uses the permissions configured for this existing role."
+    },
+    "joined": "Membership created: {{date}}",
+    "updated": "Last membership/access change: {{date}}",
+    "none": "No branches assigned",
+    "inactiveBranch": "Inactive or unavailable branch",
+    "changeRole": "Choose a different role",
+    "branchHint": "Changes apply after confirmation. Removing all branches leaves ordinary staff without branch access.",
+    "managerAccess": "Branch managers can operate across all active pharmacy branches, according to their existing role permissions.",
+    "prepareSuspended": "This prepares the membership as deactivated. Reactivate it separately when its role and access are ready.",
+    "branchSelectionHint": "Keep the current branch while it is available; otherwise the first assigned active branch is selected. There is no separate default branch setting.",
+    "managementOnly": "Visible for management; no operational branch access assigned.",
+    "addBranch": "Add access: {{name}}",
+    "removeBranch": "Remove access: {{name}}",
+    "roleChange": "Change role to {{role}}.",
+    "deactivate": "Deactivate membership",
+    "reactivate": "Reactivate membership",
+    "deactivateHint": "Stop this colleague's pharmacy access. Keep their membership, assigned branches and historical staff identity.",
+    "reactivateHint": "Restore access using this membership's role and assigned branches.",
+    "protected": "Your own membership and owner memberships are protected from routine staff edits.",
+    "confirm": "Review access change for {{name}}",
+    "apply": "Confirm change",
+    "historyPreserved": "Historical business records and staff references are retained.",
+    "retryHint": "If the connection is interrupted, retry this same change. Refresh the directory if another manager changed it.",
+    "saved": "Change saved. The directory is refreshed from the pharmacy.",
+    "refreshHint": "Colleagues' access refreshes when they return to the app and every 30 seconds while online. Refresh Staff to see the latest directory.",
+    "noAccess": "Pharmacy access is unavailable",
+    "noAccessHint": "Your membership may be inactive or have no assigned active branch. Ask the owner to restore access, then retry.",
+    "invitedAt": "Invitation created: {{date}}",
+    "acceptedAt": "Accepted: {{date}}",
+    "reissue": "Reissue invitation for 7 days",
+    "shareInstructions": "{{pharmacy}} invites {{email}}. Open {{url}}, sign in or register with this email, confirm your account email, then accept in Invitations. Access opens after acceptance. No invitation email is sent. You can copy and share these instructions again while the invitation is pending.",
+    "cancelConfirm": "Cancel the pending invitation for {{email}}?",
+    "acceptHint": "Signed in as {{email}}. Accept to join this pharmacy with the displayed role and branch. If an invitation is missing, expired or already used, ask the owner to check its status or reissue it.",
+    "errors": {
+      "changed": "Access changed since this page was loaded. Cancel this review, refresh Staff and review the latest membership before trying again."
+    }
+  }
+}

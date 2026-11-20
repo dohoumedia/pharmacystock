@@ -1,0 +1,94 @@
+{
+  "notificationsReady": {
+    "title": "Notifications",
+    "subtitle": "Operational follow-up for your accessible branches.",
+    "all": "All notifications",
+    "unreadFilter": "Unread",
+    "unread": "Unread",
+    "read": "Read",
+    "resolved": "Resolved / closed",
+    "markRead": "Mark read",
+    "markUnread": "Mark unread",
+    "markAll": "Mark all read",
+    "refresh": "Refresh",
+    "more": "Load more",
+    "open": "Open workflow",
+    "empty": "No notifications yet.",
+    "emptyUnread": "No unread notifications.",
+    "unreadCount": "Unread: {{count}}",
+    "badge": "Alerts {{count}}",
+    "cachedBadge": "cached",
+    "organizationWide": "Organization-wide",
+    "noAccess": "Notification access is unavailable.",
+    "onlineRequired": "Go online with refreshed access to open workflows or change read state. Cached follow-ups may no longer apply.",
+    "failed": "Notifications could not be refreshed or saved. Retry refresh; the last snapshot may be stale.",
+    "disabled": "In-app notifications are off. History remains available. Enable them in Settings to receive future follow-ups.",
+    "timing": "Follow-ups refresh when navigating, returning to the app, reconnecting, and every minute while the app is active. They are last-checked conditions, not live monitoring.",
+    "remainingDays_one": "Expires in {{count}} day",
+    "remainingDays_other": "Expires in {{count}} days",
+    "expiredDays_one": "Expired {{count}} day ago",
+    "expiredDays_other": "Expired {{count}} days ago",
+    "closedAt": "Closed {{date}}",
+    "invitationExpired": "Invitation expired: review or replace it in Staff.",
+    "quantity": "Sellable available quantity: {{quantity}}",
+    "countLink": "Open requested physical count {{id}}",
+    "status": {
+      "ordered": "Awaiting receipt",
+      "partially_received": "Partially received",
+      "REQUESTED": "Awaiting approval",
+      "APPROVED": "Awaiting dispatch",
+      "DISPATCHED": "Awaiting receipt",
+      "QUARANTINED": "Quarantined",
+      "RECALLED": "Recalled"
+    },
+    "events": {
+      "LOW_STOCK": {
+        "category": "Stock",
+        "title": "Low stock",
+        "body": "Review stock and plan replenishment."
+      },
+      "OUT_OF_STOCK": {
+        "category": "Stock",
+        "title": "Out of sellable stock",
+        "body": "Review inventory and replenish eligible stock."
+      },
+      "EXPIRY_ALERT": {
+        "category": "Expiry",
+        "title": "Expiry follow-up",
+        "body": "Review the batch in the expiry worklist."
+      },
+      "BATCH_ATTENTION": {
+        "category": "Batch safety",
+        "title": "Batch requires attention",
+        "body": "Review quarantined or recalled stock and its next action."
+      },
+      "PURCHASE_FOLLOWUP": {
+        "category": "Purchasing",
+        "title": "Purchase awaiting receipt",
+        "body": "Review the order and its remaining receipt."
+      },
+      "TRANSFER_FOLLOWUP": {
+        "category": "Transfers",
+        "title": "Transfer requires action",
+        "body": "Open the transfer for the next authorized step."
+      },
+      "COUNT_FOLLOWUP": {
+        "category": "Inventory count",
+        "title": "Physical count in progress",
+        "body": "Complete or review the open physical count."
+      },
+      "INVITATION_FOLLOWUP": {
+        "category": "Staff access",
+        "title": "Staff invitation follow-up",
+        "body": "Review the pending invitation in Staff. No external delivery is implied."
+      },
+      "IMPORT_FAILED": {
+        "category": "Imports",
+        "title": "Import needs review",
+        "body": "Review failed import rows in Operations before retrying."
+      }
+    },
+    "notLoaded": "No synchronized notifications are available. Go online and refresh.",
+    "unreadUnknown": "Unread count unavailable"
+  }
+}

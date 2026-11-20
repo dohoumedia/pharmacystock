@@ -12,6 +12,8 @@ type StaffMember = {
   profile: Profile | null;
   role: Role | null;
   branchIds: string[];
+  email?: string | null;
+  accessChangedAt?: string | null;
 };
 
 export type OrganizationContextData = {
@@ -19,6 +21,7 @@ export type OrganizationContextData = {
   membership: Membership | null;
   role: Role | null;
   permissions: string[];
+  branchIds?: string[];
 };
 
 export async function loadOrganizationsForUser(userId: string): Promise<Organization[]> {
@@ -36,6 +39,7 @@ export async function loadOrganizationsForUser(userId: string): Promise<Organiza
     .from('organizations')
     .select('*')
     .in('id', organizationIds)
+    .eq('status', 'active')
     .order('name');
 
   if (error) throw error;
@@ -63,6 +67,13 @@ export async function loadOrganizationContext(
   const membership = membershipResult.data;
   let role: Role | null = null;
   let permissions: string[] = [];
+  let branchIds: string[] = [];
+
+  if (membership) {
+    const access = await supabase.from('branch_memberships').select('branch_id').eq('organization_membership_id', membership.id);
+    if (access.error) throw access.error;
+    branchIds = access.data.map((item) => item.branch_id);
+  }
 
   if (membership?.role_id) {
     const [roleResult, permissionResult] = await Promise.all([
@@ -80,6 +91,7 @@ export async function loadOrganizationContext(
     membership,
     role,
     permissions,
+    branchIds,
   };
 }
 
@@ -88,7 +100,6 @@ export async function loadStaff(organizationId: string): Promise<StaffMember[]> 
     .from('organization_memberships')
     .select('*')
     .eq('organization_id', organizationId)
-    .neq('status', 'revoked')
     .order('created_at');
   if (error) throw error;
   if (memberships.length === 0) return [];
@@ -112,6 +123,8 @@ export async function loadStaff(organizationId: string): Promise<StaffMember[]> 
     .select('*')
     .in('organization_membership_id', membershipIds);
   if (branchesResult.error) throw branchesResult.error;
+  const details = await supabase.rpc('staff_directory_details', { p_organization_id: organizationId });
+  if (details.error) throw details.error;
 
   const profilesByUser = new Map(profilesResult.data.map((profile) => [profile.user_id, profile]));
   const rolesById = new Map(roles.map((role) => [role.id, role]));
@@ -120,6 +133,8 @@ export async function loadStaff(organizationId: string): Promise<StaffMember[]> 
     membership,
     profile: profilesByUser.get(membership.user_id) ?? null,
     role: membership.role_id ? rolesById.get(membership.role_id) ?? null : null,
+    email: details.data.find((item) => item.user_id === membership.user_id)?.email ?? null,
+    accessChangedAt: details.data.find((item) => item.user_id === membership.user_id)?.access_changed_at ?? membership.updated_at,
     branchIds: branchesResult.data
       .filter((item) => item.organization_membership_id === membership.id)
       .map((item) => item.branch_id),
@@ -136,46 +151,20 @@ export async function loadAssignableRoles(organizationId: string): Promise<Role[
   return data;
 }
 
-export async function updateStaffMembership(
-  membershipId: string,
-  patch: Pick<Membership, 'role_id' | 'status'>,
-) {
-  const { error } = await supabase
-    .from('organization_memberships')
-    .update({ role_id: patch.role_id, status: patch.status })
-    .eq('id', membershipId);
-  if (error) throw error;
-}
-
-export async function replaceStaffBranches(
-  membershipId: string,
-  currentBranchIds: string[],
-  nextBranchIds: string[],
-) {
-  const remove = currentBranchIds.filter((id) => !nextBranchIds.includes(id));
-  const add = nextBranchIds.filter((id) => !currentBranchIds.includes(id));
-
-  if (remove.length > 0) {
-    const { error } = await supabase
-      .from('branch_memberships')
-      .delete()
-      .eq('organization_membership_id', membershipId)
-      .in('branch_id', remove);
-    if (error) throw error;
-  }
-
-  if (add.length > 0) {
-    const { error } = await supabase
-      .from('branch_memberships')
-      .insert(add.map((branchId) => ({ branch_id: branchId, organization_membership_id: membershipId })));
-    if (error) throw error;
-  }
-}
-
-export async function createBranch(input: Database['public']['Tables']['branches']['Insert']) {
-  const { data, error } = await supabase.from('branches').insert(input).select('*').single();
+export async function loadMembershipUnavailable() {
+  const { data, error } = await supabase.rpc('my_membership_unavailable');
   if (error) throw error;
   return data;
+}
+
+export async function createBranch(input: Database['public']['Tables']['branches']['Insert'] & { id: string }) {
+  const { data, error } = await supabase.rpc('create_branch_with_access', {
+    p_branch_id: input.id, p_organization_id: input.organization_id, p_name: input.name.trim(),
+    p_code: input.code?.trim() || null, p_city: input.city?.trim() || null, p_phone: input.phone?.trim() || null,
+  });
+  if (error) throw error;
+  if (!data) throw new Error('BRANCH_RESULT_INVALID');
+  return { id: data };
 }
 
 export type { Organization, Branch, Membership, Role, Profile, StaffMember };
