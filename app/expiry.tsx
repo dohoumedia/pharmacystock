@@ -1,233 +1,152 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
-import { formatDateOnly } from '@/utils/dateFormatting';
-import { errorPresentationKey } from '@/utils/errorPresentation';
+import { useSettingsRevision } from '../src/hooks/useSettingsRevision';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { AppState, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { useTranslation } from '../src/i18n/useTranslation';
+import { Alert, Button, FormField, PageHeader, Surface, TextField } from '@/components/ui';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
+import { ExpiryWorkbench } from '@/components/ExpiryWorkbench';
+import { ExpiryHistory } from '@/components/ExpiryHistory';
+import { ExpiryRiskLabel, expiryErrorKey } from '@/components/ExpiryBatchDetails';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { LocalStore } from '@/offline/localStore';
-import { cacheExpiryReadModel, getCachedExpiryReadModel } from '@/offline/expiryTransfersReadModels';
-import { isSnapshotStale, OPERATIONAL_READ_MODEL_MAX_AGE_MS } from '@/offline/readModels';
+import { cacheExpiryReadModel, getCachedExpiryReadModel, type ExpiryReadModel } from '@/offline/expiryTransfersReadModels';
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
-import {
-  acknowledgeExpiryAlert,
-  disposeBatch,
-  loadExpiryActions,
-  loadExpiryAlerts,
-  loadExpiryPolicy,
-  loadExpiryRisk,
-  recordExpiryAction,
-  refreshExpiryAlerts,
-  returnBatchToSupplier,
-  saveExpiryPolicy,
-  type ExpiryAction,
-  type ExpiryAlert,
-  type ExpiryRisk,
-} from '@/services/expiry';
+import { useAuth } from '@/providers/AuthProvider';
+import { hasFreshMutationAuthorization } from '@/domain/mutationAuthorization';
+import { inventoryFormScope } from '@/domain/inventoryCompletion';
+import { currentExpiryAlerts, DEFAULT_EXPIRY_THRESHOLDS, EXPIRY_REFRESH_MS, expiryCategory, expirySnapshotStale, expiryThresholds, riskSellable } from '@/domain/expiryCompletion';
+import type { BatchSafetyStatus } from '@/domain/inventorySafety';
+import { stockUnitLabel } from '@/domain/stockUnits';
+import { formatDateOnly } from '@/utils/dateFormatting';
+import { acknowledgeExpiryAlert, saveExpiryPolicy } from '@/services/expiry';
+import { loadExpiryWorkspace } from '@/services/expiryCompletion';
 
 const localStore = new LocalStore();
-
 export default function ExpiryScreen() {
+  const { organization, branch } = useOrganization();
+  const { user } = useAuth();
+  return <ExpiryContent key={`${user?.id}:${organization?.id}:${branch?.id}`} />;
+}
+function ExpiryContent() {
   const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const params = useLocalSearchParams<{ batchId?: string }>();
+  const router = useRouter();
   const { isOnline } = useConnectivity();
-  const { organization, branch, branches, setBranchId, can, usingCachedData: usingCachedPermissions } = useOrganization();
-  const [risk, setRisk] = useState<ExpiryRisk[]>([]);
-  const [alerts, setAlerts] = useState<ExpiryAlert[]>([]);
-  const [actions, setActions] = useState<ExpiryAction[]>([]);
-  const [thresholds, setThresholds] = useState('180, 90, 60, 30, 7');
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [returnQuantity, setReturnQuantity] = useState('');
-  const [reason, setReason] = useState('');
-  const [confirmDispose, setConfirmDispose] = useState(false);
+  const { organization, branch, branches, setBranchId, can, usingCachedData: cachedPermissions, contextSyncedAt, refresh: refreshAccess } = useOrganization();
+  const organizationId = organization?.id ?? '';
+  const branchId = branch?.id ?? '';
+  const settingsRevision = useSettingsRevision(organizationId);
+  const canRead = can('inventory.read');
+  const writable = hasFreshMutationAuthorization(isOnline, cachedPermissions, contextSyncedAt);
+  const [model, setModel] = useState<ExpiryReadModel>({ risk: [], alerts: [], actions: [], policy: null });
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [cached, setCached] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
-  const [usingCachedData, setUsingCachedData] = useState(false);
-
-  const canRead = can('inventory.read');
-  const canManage = can('inventory.expiry.manage');
-  const canDispose = can('inventory.dispose');
-  const mutationAllowed = isOnline && !usingCachedPermissions;
-
-  const refresh = useCallback(async () => {
-    if (!organization || !branch || !canRead) return;
-    const cached = getCachedExpiryReadModel(localStore, organization.id, branch.id);
-    if (cached) {
-      setRisk(cached.data.risk); setAlerts(cached.data.alerts); setActions(cached.data.actions);
-      if (cached.data.policy) setThresholds(cached.data.policy.thresholds_days.join(', '));
-      setSyncedAt(cached.syncedAt); setUsingCachedData(true);
-    }
-    if (!isOnline) { if (!cached) setError(t('production.readModel.noCachedData')); return; }
-    setLoading(true);
-    setError(null);
-    try {
-      await refreshExpiryAlerts(organization.id, branch.id);
-      const [nextRisk, nextAlerts, nextActions, policy] = await Promise.all([
-        loadExpiryRisk(organization.id, branch.id),
-        loadExpiryAlerts(organization.id, branch.id),
-        loadExpiryActions(organization.id, branch.id),
-        loadExpiryPolicy(organization.id),
-      ]);
-      setRisk(nextRisk);
-      setAlerts(nextAlerts);
-      setActions(nextActions);
-      cacheExpiryReadModel(localStore, organization.id, branch.id, { risk: nextRisk, alerts: nextAlerts, actions: nextActions, policy });
-      setSyncedAt(new Date().toISOString()); setUsingCachedData(false);
-      if (policy) setThresholds(policy.thresholds_days.join(', '));
-      setSelectedBatchId((current) => current && nextRisk.some((item) => item.batch_id === current) ? current : nextRisk[0]?.batch_id ?? null);
-    } catch (cause) {
-      setError(t(errorPresentationKey(cause)));
-    } finally {
-      setLoading(false);
-    }
-  }, [branch, canRead, isOnline, organization, t]);
-
+  const [notice, setNotice] = useState<string | null>(null);
+  const [thresholdInput, setThresholdInput] = useState(DEFAULT_EXPIRY_THRESHOLDS.join(', '));
+  const policyDirty = useRef(false);
+  const refreshFlight = useRef<Promise<void> | null>(null);
+  const mutationFlight = useRef(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('RISK');
+  const [selected, setSelected] = useState<string | null>(params.batchId ?? null);
+  const [pendingBranch, setPendingBranch] = useState<{ branchId: string; batchId: string | null } | null>(null);
+  const [clock, setClock] = useState<number | null>(null);
+  const thresholds = model.policy?.thresholds_days ?? DEFAULT_EXPIRY_THRESHOLDS;
+  const refresh = useCallback(async function performRefresh(): Promise<void> {
+    void settingsRevision;
+    if (!organizationId || !branchId || !canRead || !isOnline) return;
+    // Serialize rather than drop a post-policy/post-action refresh behind older data.
+    if (refreshFlight.current) { await refreshFlight.current; return performRefresh(); }
+    const run = async () => {
+      setLoading(true); setError(null);
+      try {
+        const next = await loadExpiryWorkspace(organizationId, branchId);
+        const timestamp = new Date().toISOString();
+        cacheExpiryReadModel(localStore, organizationId, branchId, next, timestamp);
+        setModel(next); setSyncedAt(timestamp); setCached(false); setFailed(false);
+        if (!policyDirty.current) setThresholdInput((next.policy?.thresholds_days ?? DEFAULT_EXPIRY_THRESHOLDS).join(', '));
+      } catch (cause) { setFailed(true); setError(t(expiryErrorKey(cause))); }
+      finally { setLoading(false); }
+    };
+    const pending = run(); refreshFlight.current = pending;
+    try { await pending; } finally { refreshFlight.current = null; }
+  }, [organizationId, branchId, canRead, isOnline, t, settingsRevision]);
   useEffect(() => {
-    const timer = setTimeout(() => void refresh(), 0);
-    return () => clearTimeout(timer);
-  }, [refresh]);
-
-  const byBatch = useMemo(() => new Map(risk.map((item) => [item.batch_id, item])), [risk]);
-  const selected = selectedBatchId ? byBatch.get(selectedBatchId) ?? null : null;
-  const counts = useMemo(() => risk.reduce<Record<string, number>>((acc, item) => {
-    const key = item.risk_bucket ?? 'OK';
-    acc[key] = (acc[key] ?? 0) + 1;
+    const timer = setTimeout(() => {
+      const snapshot = getCachedExpiryReadModel(localStore, organizationId, branchId);
+      if (snapshot) { setModel(snapshot.data); setSyncedAt(snapshot.syncedAt); setCached(true); setThresholdInput((snapshot.data.policy?.thresholds_days ?? DEFAULT_EXPIRY_THRESHOLDS).join(', ')); }
+      setClock(Date.now());
+    }, 0);
+    const tick = setInterval(() => setClock(Date.now()), 15_000);
+    return () => { clearTimeout(timer); clearInterval(tick); };
+  }, [organizationId, branchId]);
+  useFocusEffect(useCallback(() => {
+    void refresh();
+    const timer = setInterval(() => { if (AppState.currentState === 'active') void refresh(); }, EXPIRY_REFRESH_MS);
+    const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') void refresh(); });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [refresh]));
+  const alerts = currentExpiryAlerts(model.alerts, model.risk, thresholds);
+  const rows = model.risk.filter((row) => {
+    const matches = [row.product_name, row.generic_name, row.lot_number].some((text) => text?.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+    const category = expiryCategory(row.days_remaining, thresholds);
+    return matches && (filter === 'ALL' || filter === 'RISK' && ['EXPIRED', 'SOON'].includes(category.kind) || filter === 'EXPIRED' && category.kind === 'EXPIRED' || filter === 'SOON' && category.kind === 'SOON' || filter === row.batch_status);
+  });
+  const number = (value: number) => new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(value);
+  const totals = useMemo(() => model.risk.reduce((acc, row) => {
+    const kind = expiryCategory(row.days_remaining, model.policy?.thresholds_days ?? DEFAULT_EXPIRY_THRESHOLDS).kind;
+    if (kind === 'EXPIRED') acc.expired++; if (kind === 'SOON') acc.soon++;
+    if (kind === 'EXPIRED' || kind === 'SOON') acc.value += Number(row.value_at_risk ?? 0);
     return acc;
-  }, {}), [risk]);
-  const valueAtRisk = useMemo(() => risk.filter((item) => item.risk_bucket !== 'OK').reduce((sum, item) => sum + Number(item.value_at_risk ?? 0), 0), [risk]);
-
-  const runAction = async (action: 'PRIORITIZE_SALE' | 'QUARANTINE' | 'RELEASE_QUARANTINE' | 'RECALL') => {
-    if (!selected?.batch_id || !mutationAllowed) return;
-    setSaving(true); setError(null);
+  }, { expired: 0, soon: 0, value: 0 }), [model]);
+  const savePolicy = async () => {
+    if (!writable || !can('inventory.expiry.manage') || mutationFlight.current) return;
+    mutationFlight.current = true; setSaving(true); setError(null); setNotice(null);
     try {
-      await recordExpiryAction(selected.batch_id, action, reason);
-      setReason('');
-      setConfirmDispose(false);
-      await refresh();
-    } catch (cause) { setError(t(errorPresentationKey(cause))); }
-    finally { setSaving(false); }
+      const values = expiryThresholds(thresholdInput);
+      const policy = await saveExpiryPolicy(organizationId, values);
+      policyDirty.current = false; setThresholdInput(policy.thresholds_days.join(', ')); setModel((current) => ({ ...current, policy }));
+      setNotice(t('expiryReady.policySaved')); await refresh();
+    } catch (cause) { setError(t(expiryErrorKey(cause))); }
+    finally { mutationFlight.current = false; setSaving(false); }
   };
-
-  const submitReturn = async () => {
-    if (!selected?.batch_id || !mutationAllowed) return;
-    const quantity = Number(returnQuantity);
-    const onHand = Number(selected.on_hand_quantity ?? 0);
-    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > onHand) return;
-    setSaving(true); setError(null);
-    try {
-      await returnBatchToSupplier(selected.batch_id, onHand, quantity, reason);
-      setReturnQuantity(''); setReason('');
-      await refresh();
-    } catch (cause) { setError(t(errorPresentationKey(cause))); }
-    finally { setSaving(false); }
+  const acknowledge = async (id: string) => {
+    if (!writable || !can('inventory.expiry.manage') || mutationFlight.current) return;
+    mutationFlight.current = true; setSaving(true); setError(null);
+    try { await acknowledgeExpiryAlert(id); await refresh(); }
+    catch (cause) { setError(t(expiryErrorKey(cause))); }
+    finally { mutationFlight.current = false; setSaving(false); }
   };
-
-  const submitDispose = async () => {
-    if (!selected?.batch_id || !mutationAllowed) return;
-    if (!confirmDispose) { setConfirmDispose(true); return; }
-    setSaving(true); setError(null);
-    try {
-      await disposeBatch(selected.batch_id, Number(selected.on_hand_quantity ?? 0), reason);
-      setConfirmDispose(false); setReason('');
-      await refresh();
-    } catch (cause) { setError(t(errorPresentationKey(cause))); }
-    finally { setSaving(false); }
+  const navigate = (nextBranch: string, batchId: string | null) => {
+    if (nextBranch === branchId) { setSelected(batchId); return; }
+    setPendingBranch({ branchId: nextBranch, batchId });
   };
-
-  const submitPolicy = async () => {
-    if (!organization || !mutationAllowed) return;
-    const parsed = thresholds.split(',').map((item) => Number(item.trim())).filter((value) => Number.isInteger(value) && value > 0);
-    setSaving(true); setError(null);
-    try {
-      const saved = await saveExpiryPolicy(organization.id, parsed);
-      setThresholds(saved.thresholds_days.join(', '));
-      await refresh();
-    } catch (cause) { setError(t(errorPresentationKey(cause))); }
-    finally { setSaving(false); }
-  };
-
-  const acknowledge = async (alertId: string) => {
-    if (!mutationAllowed) return;
-    setSaving(true); setError(null);
-    try { await acknowledgeExpiryAlert(alertId); await refresh(); }
-    catch (cause) { setError(t(errorPresentationKey(cause))); }
-    finally { setSaving(false); }
-  };
-
-  if (!canRead) {
-    return <SafeAreaView style={styles.safeArea}><View style={styles.container}><Text style={styles.error}>{t('expiry.cannotRead')}</Text><Link href="/">{t('organization.back')}</Link></View></SafeAreaView>;
-  }
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headerRow}>
-          <View style={styles.grow}><Text style={styles.title}>{t('expiry.title')}</Text><Text style={styles.subtitle}>{t('expiry.subtitle')}</Text></View>
-          <Link href="/" asChild><Pressable style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('organization.back')}</Text></Pressable></Link>
-        </View>
-
-        <Text style={styles.label}>{t('organization.branch')}</Text>
-        <View accessibilityRole="tablist" style={styles.chips}>{branches.map((item) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: item.id === branch?.id }} key={item.id} onPress={() => setBranchId(item.id)} style={[styles.chip, item.id === branch?.id && styles.chipSelected]}><Text style={[styles.chipText, item.id === branch?.id && styles.chipTextSelected]}>{item.name}</Text></Pressable>)}</View>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <ReadModelStatus loading={loading} usingCachedData={usingCachedData} stale={isSnapshotStale(syncedAt ? { data: null, syncedAt } : null, OPERATIONAL_READ_MODEL_MAX_AGE_MS)} syncedAt={syncedAt} hasData={risk.length + alerts.length + actions.length > 0} />
-        {!mutationAllowed ? <Text accessibilityRole="alert" style={styles.error}>{t('production.authorizationReadOnly')}</Text> : null}
-
-        <View style={styles.metricGrid}>
-          {['EXPIRED','7_DAYS','30_DAYS','60_DAYS','90_DAYS','180_DAYS'].map((bucket) => <View key={bucket} style={styles.metric}><Text style={styles.metricValue}>{counts[bucket] ?? 0}</Text><Text style={styles.meta}>{t(`expiry.bucket.${bucket}`)}</Text></View>)}
-          <View style={styles.metric}><Text style={styles.metricValue}>{Math.round(valueAtRisk).toLocaleString()} {organization?.currency_code ?? ''}</Text><Text style={styles.meta}>{t('expiry.valueAtRisk')}</Text></View>
-        </View>
-
-        <View accessibilityRole="summary" style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('catalog.status')}</Text>
-          <View style={styles.chips}>
-            <BatchStatusBadge status="ACTIVE" />
-            <BatchStatusBadge status="EXPIRED" />
-            <BatchStatusBadge status="QUARANTINED" />
-            <BatchStatusBadge status="RECALLED" />
-            <BatchStatusBadge status="DISPOSED" />
-          </View>
-        </View>
-
-        {canManage ? <View style={styles.card}><Text style={styles.sectionTitle}>{t('expiry.policy')}</Text><Text style={styles.meta}>{t('expiry.policyHint')}</Text><TextInput editable={mutationAllowed} style={styles.input} value={thresholds} onChangeText={setThresholds} placeholder="180, 90, 60, 30, 7"/><Pressable disabled={saving||!mutationAllowed} onPress={() => void submitPolicy()} style={[styles.primaryButton,(saving||!mutationAllowed)&&styles.disabled]}><Text style={styles.primaryButtonText}>{t('common.save')}</Text></Pressable></View> : null}
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('expiry.riskList')}</Text>
-          {!loading && risk.length === 0 ? <Text style={styles.meta}>{t('expiry.noRisk')}</Text> : null}
-          {risk.map((item) => <Pressable accessibilityRole="button" accessibilityState={{ selected: item.batch_id === selectedBatchId }} key={item.batch_id ?? `${item.product_id}-${item.lot_number}`} onPress={() => { setSelectedBatchId(item.batch_id); setConfirmDispose(false); }} style={[styles.riskRow,item.batch_id===selectedBatchId&&styles.riskRowSelected]}>
-            <View style={styles.grow}><Text style={styles.name}>{item.product_name}</Text><Text style={styles.meta}>{t('catalog.lotNumber')}: {item.lot_number} · {t('expiry.expires')}: {formatDateOnly(item.expiry_date, i18n.language)}</Text></View>
-            <View><Text style={styles.quantity}>{item.on_hand_quantity}</Text><Text style={styles.meta}>{t(`expiry.bucket.${item.risk_bucket ?? 'OK'}`)}</Text></View>
-          </Pressable>)}
-        </View>
-
-        {selected && canManage ? <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('expiry.actions')}</Text>
-          <Text style={styles.name}>{selected.product_name} · {selected.lot_number}</Text>
-          <Text style={styles.meta}>{t('inventory.onHand')}: {selected.on_hand_quantity} · {t('expiry.daysRemaining')}: {selected.days_remaining}</Text>
-          <TextInput editable={mutationAllowed} style={styles.input} placeholder={t('expiry.reason')} value={reason} onChangeText={setReason}/>
-          <View style={styles.actions}>
-            {selected.batch_status === 'ACTIVE' && Number(selected.days_remaining ?? -1) >= 0 ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('PRIORITIZE_SALE')} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.prioritizeSale')}</Text></Pressable> : null}
-            {selected.batch_status === 'ACTIVE' ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('QUARANTINE')} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.quarantine')}</Text></Pressable> : null}
-            {selected.batch_status === 'ACTIVE' || selected.batch_status === 'QUARANTINED' ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('RECALL')} style={[styles.dangerButton,!mutationAllowed&&styles.disabled]}><Text style={styles.dangerText}>{t('expiry.recall')}</Text></Pressable> : null}
-            {selected.batch_status === 'QUARANTINED' && Number(selected.days_remaining ?? -1) >= 0 ? <Pressable disabled={saving||!mutationAllowed} onPress={() => void runAction('RELEASE_QUARANTINE')} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.releaseQuarantine')}</Text></Pressable> : null}
-          </View>
-          <View style={styles.returnRow}><TextInput editable={mutationAllowed} keyboardType="decimal-pad" style={styles.smallInput} placeholder={t('expiry.returnQuantity')} value={returnQuantity} onChangeText={setReturnQuantity}/><Pressable disabled={saving || !returnQuantity || !mutationAllowed} onPress={() => void submitReturn()} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.returnSupplier')}</Text></Pressable></View>
-          {canDispose ? <View style={styles.actions}><Pressable disabled={saving||!mutationAllowed} onPress={() => void submitDispose()} style={[styles.dangerButton,confirmDispose&&styles.dangerConfirm,!mutationAllowed&&styles.disabled]}><Text style={styles.dangerText}>{confirmDispose?t('expiry.confirmDispose'):t('expiry.dispose')}</Text></Pressable>{confirmDispose?<Pressable onPress={() => setConfirmDispose(false)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('common.cancel')}</Text></Pressable>:null}</View> : null}
-        </View> : null}
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>{t('expiry.alerts')}</Text>
-          {alerts.length === 0 ? <Text style={styles.meta}>{t('expiry.noAlerts')}</Text> : alerts.map((alert) => { const item=byBatch.get(alert.batch_id); const alertStatus = t(`production.expiryAlertStatus.${alert.status.toLowerCase()}`, { defaultValue: t('production.expiryAlertStatus.unavailable') }); return <View key={alert.id} style={styles.alertRow}><View style={styles.grow}><Text style={styles.name}>{item?.product_name ?? alert.batch_id.slice(0,8)}</Text><Text style={styles.meta}>{alert.alert_type==='EXPIRED'?t('expiry.expired'):t('expiry.warning',{days:alert.threshold_days})} · {alertStatus}</Text></View>{canManage&&alert.status==='OPEN'?<Pressable disabled={saving||!mutationAllowed} onPress={() => void acknowledge(alert.id)} style={[styles.secondaryButton,!mutationAllowed&&styles.disabled]}><Text style={styles.secondaryButtonText}>{t('expiry.acknowledge')}</Text></Pressable>:null}</View>; })}
-        </View>
-
-        <View style={styles.card}><Text style={styles.sectionTitle}>{t('expiry.recentActions')}</Text>{actions.length===0?<Text style={styles.meta}>{t('expiry.noActions')}</Text>:actions.map((action)=><View key={action.id} style={styles.alertRow}><Text style={styles.name}>{t(`expiry.action.${action.action_type}`)}</Text><Text style={styles.meta}>{new Date(action.created_at).toLocaleString()}{action.quantity!=null?` · ${action.quantity}`:''}</Text></View>)}</View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+  const stale = failed || cached || !isOnline || (clock !== null && expirySnapshotStale(syncedAt, clock));
+  if (!canRead) return <Surface><Text>{t('expiry.cannotRead')}</Text><Link href="/">{t('organization.back')}</Link></Surface>;
+  return <SafeAreaView style={{ flex: 1 }}><ScrollView contentContainerStyle={{ padding: 20, gap: 18, maxWidth: 1120, width: '100%', alignSelf: 'center' }}>
+    <PageHeader title={t('expiry.title')} subtitle={t('expiryReady.subtitle')} action={<Button label={t('expiryReady.refresh')} disabled={!isOnline || loading} loading={loading} onPress={() => void refresh()} />} />
+    <Text style={{ fontWeight: '800' }}>{t('organization.branch')}: {branch?.name}</Text>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{branches.map((item) => <Button key={item.id} disabled={saving} label={item.name} variant={item.id === branchId ? 'primary' : 'secondary'} onPress={() => navigate(item.id, null)} />)}</View>
+    {pendingBranch ? <Alert tone="warning" title={t('expiryReady.switchBranch')}><View style={{ gap: 8 }}><Text>{t('expiryReady.switchHint')}</Text><Button label={t('expiryReady.confirmSwitch')} onPress={() => { const target = pendingBranch; router.setParams({ batchId: target.batchId ?? undefined }); setBranchId(target.branchId); }} /><Button variant="secondary" label={t('common.cancel')} onPress={() => setPendingBranch(null)} /></View></Alert> : null}
+    {error ? <Alert tone="danger" title={error} /> : null}{notice ? <Alert tone="success" title={notice} /> : null}
+    <ReadModelStatus loading={loading} usingCachedData={cached} stale={stale} syncedAt={syncedAt} hasData={model.risk.length + model.actions.length > 0} />
+    <Text>{t('expiryReady.refreshHint')}</Text>
+    {!writable ? <><Alert tone="warning" title={t('production.authorizationReadOnly')} /><Button disabled={!isOnline} variant="secondary" label={t('inventoryReady.refreshAccess')} onPress={() => { void refreshAccess().catch((cause: unknown) => setError(t(expiryErrorKey(cause)))); }} /></> : null}
+    <Surface style={{ gap: 8 }}><Text>{t('expiryReady.expiredCount', { count: totals.expired })} · {t('expiryReady.soonCount', { count: totals.soon })}</Text><Text>{t('expiry.valueAtRisk')}: {new Intl.NumberFormat(i18n.language, { ...(organization?.currency_code ? { style: 'currency' as const, currency: organization.currency_code } : {}) }).format(totals.value)}</Text><Text>{t('expiryReady.activePolicy', { days: thresholds.join(', ') })}</Text></Surface>
+    {can('inventory.expiry.manage') ? <Surface style={{ gap: 10 }}><Text accessibilityRole="header" style={{ fontWeight: '800', fontSize: 20 }}>{t('expiry.policy')}</Text><FormField label={t('expiryReady.thresholdLabel')} hint={t('expiryReady.thresholdHint')}><TextField accessibilityLabel={t('expiryReady.thresholdLabel')} editable={writable && !saving} value={thresholdInput} onChangeText={(value) => { policyDirty.current = true; setThresholdInput(value); }} /></FormField><Button disabled={!writable || saving || loading} label={t('expiryReady.savePolicy')} onPress={() => void savePolicy()} /></Surface> : null}
+    <Surface style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontWeight: '800', fontSize: 20 }}>{t('expiry.riskList')}</Text><TextField accessibilityLabel={t('expiryReady.search')} placeholder={t('expiryReady.search')} value={query} onChangeText={setQuery} /><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{['RISK', 'ALL', 'EXPIRED', 'SOON', 'QUARANTINED', 'RECALLED'].map((value) => <Button key={value} label={t(`expiryReady.filter.${value}`)} variant={filter === value ? 'primary' : 'secondary'} onPress={() => setFilter(value)} />)}</View>
+      {!loading && !rows.length ? <Text>{t('expiryReady.noMatches')}</Text> : null}
+      {rows.map((row) => <Pressable key={row.batch_id} accessibilityRole="button" accessibilityLabel={`${row.product_name} · ${row.lot_number}`} accessibilityState={{ selected: selected === row.batch_id }} onPress={() => setSelected(row.batch_id)} style={{ padding: 14, gap: 6, borderWidth: 1, borderColor: selected === row.batch_id ? '#102A5C' : '#D0D5DD', borderRadius: 12 }}><Text style={{ fontWeight: '800' }}>{row.product_name} · {row.lot_number}</Text><Text>{t('organization.branch')}: {branch?.name} · {row.on_hand_quantity === null ? t('expiryReady.balanceUnavailable') : number(Number(row.on_hand_quantity))} {stockUnitLabel(row.stock_unit, t)}</Text><Text>{t('expiry.expires')}: {formatDateOnly(row.expiry_date, i18n.language)}</Text><ExpiryRiskLabel days={row.days_remaining} thresholds={thresholds} /><BatchStatusBadge status={(['ACTIVE', 'QUARANTINED', 'RECALLED', 'EXPIRED', 'DEPLETED', 'DISPOSED'].includes(row.batch_status ?? '') ? row.batch_status : 'UNKNOWN') as BatchSafetyStatus} /><Text>{t(riskSellable(row) ? 'expiryReady.sellable' : 'expiryReady.blocked')}</Text></Pressable>)}
+    </Surface>
+    {organization && branch && user ? <ExpiryWorkbench scope={inventoryFormScope(user.id, organizationId, branchId)} organizationId={organizationId} branchId={branchId} branchName={branch.name} branches={branches} selectedBatchId={selected} writable={writable} online={isOnline} revision={syncedAt} canManage={can('inventory.expiry.manage')} canDispose={can('inventory.dispose')} onSaved={refresh} onNavigate={navigate} onSelectBatch={setSelected} /> : null}
+    <Surface style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontWeight: '800', fontSize: 20 }}>{t('expiry.alerts')}</Text><Text>{t('expiryReady.alertHint')}</Text>{!alerts.length ? <Text>{t('expiry.noAlerts')}</Text> : alerts.map((alert) => { const row = model.risk.find((item) => item.batch_id === alert.batch_id); return <View key={alert.id} style={{ gap: 8 }}><Text>{row?.product_name} · {row?.lot_number}</Text><Text>{alert.alert_type === 'EXPIRED' ? t('expiry.expired') : t('expiryReady.withinDays', { days: alert.threshold_days })} · {t(`production.expiryAlertStatus.${alert.status.toLowerCase()}`)}</Text>{can('inventory.expiry.manage') && alert.status === 'OPEN' ? <Button disabled={!writable || saving} label={t('expiry.acknowledge')} onPress={() => void acknowledge(alert.id)} /> : null}</View>; })}</Surface>
+    {branch ? <ExpiryHistory organizationId={organizationId} branchId={branchId} branchName={branch.name} online={isOnline} revision={syncedAt} /> : null}
+  </ScrollView></SafeAreaView>;
 }
-
-const styles=StyleSheet.create({
-  safeArea:{flex:1,backgroundColor:'#F6F8FC'},container:{padding:24,gap:18,maxWidth:1100,width:'100%',alignSelf:'center'},headerRow:{flexDirection:'row',gap:12,alignItems:'center'},grow:{flex:1},title:{fontSize:28,fontWeight:'800',color:'#102A5C'},subtitle:{color:'#667085',marginTop:4},label:{fontSize:13,fontWeight:'700',color:'#475467'},meta:{color:'#667085',fontSize:13},error:{color:'#B42318'},card:{backgroundColor:'#FFF',borderRadius:16,padding:18,gap:12},sectionTitle:{fontSize:20,fontWeight:'700',color:'#102A5C'},metricGrid:{flexDirection:'row',flexWrap:'wrap',gap:10},metric:{backgroundColor:'#FFF',borderRadius:14,padding:14,minWidth:130},metricValue:{fontSize:20,fontWeight:'800',color:'#102A5C'},chips:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{minHeight:44,justifyContent:'center',borderWidth:1,borderColor:'#D0D5DD',borderRadius:999,paddingVertical:8,paddingHorizontal:12},chipSelected:{backgroundColor:'#102A5C',borderColor:'#102A5C'},chipText:{fontSize:13,fontWeight:'600',color:'#344054'},chipTextSelected:{color:'#FFF'},riskRow:{minHeight:44,flexDirection:'row',alignItems:'center',gap:12,padding:12,borderRadius:10,borderWidth:1,borderColor:'#EAECF0'},riskRowSelected:{borderColor:'#102A5C',backgroundColor:'#F4F7FC'},name:{fontWeight:'700',color:'#101828'},quantity:{fontWeight:'800',fontSize:18,color:'#101828',textAlign:'right'},input:{minHeight:44,borderWidth:1,borderColor:'#D0D5DD',borderRadius:10,padding:11,color:'#101828'},smallInput:{minHeight:44,width:150,borderWidth:1,borderColor:'#D0D5DD',borderRadius:10,padding:10},actions:{flexDirection:'row',flexWrap:'wrap',gap:8},returnRow:{flexDirection:'row',gap:8,alignItems:'center'},alertRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12,paddingVertical:10,borderBottomWidth:1,borderBottomColor:'#EAECF0'},primaryButton:{minHeight:44,justifyContent:'center',alignSelf:'flex-start',backgroundColor:'#102A5C',borderRadius:10,paddingVertical:11,paddingHorizontal:16},primaryButtonText:{color:'#FFF',fontWeight:'700'},secondaryButton:{minHeight:44,justifyContent:'center',alignSelf:'flex-start',borderWidth:1,borderColor:'#98A2B3',borderRadius:10,paddingVertical:10,paddingHorizontal:14},secondaryButtonText:{color:'#344054',fontWeight:'700'},dangerButton:{minHeight:44,justifyContent:'center',alignSelf:'flex-start',borderWidth:1,borderColor:'#B42318',borderRadius:10,paddingVertical:10,paddingHorizontal:14},dangerConfirm:{backgroundColor:'#B42318'},dangerText:{color:'#B42318',fontWeight:'700'},disabled:{opacity:.45}
-});

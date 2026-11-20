@@ -1,4 +1,3 @@
-import { isBatchSellable } from './inventorySafety';
 import type { ExpiryRisk } from '../services/expiry';
 import type { InventoryBalanceItem } from '../services/inventory';
 import type { DailySalesReport } from '../services/coreCompletion';
@@ -23,16 +22,24 @@ export function transferRiskLevel(openTransfers: number): DashboardRiskLevel {
   return openTransfers > 0 ? 'medium' : 'low';
 }
 
-export function getStockAttention(balances: InventoryBalanceItem[], lowStockThreshold: number | null): StockAttention {
-  const eligible = balances.filter((item) => isBatchSellable(item.batch_status, item.expiry_date));
-  const outOfStock = eligible.filter((item) => Number(item.available_quantity) <= 0).length;
-  const lowStock = lowStockThreshold === null
-    ? 0
-    : eligible.filter((item) => {
-        const quantity = Number(item.available_quantity);
-        return quantity > 0 && quantity <= lowStockThreshold;
-      }).length;
-  return { outOfStock, lowStock, lowStockThreshold };
+/** Aggregate eligible balances by product before applying the configured threshold. */
+export function getStockAttention(balances: InventoryBalanceItem[], lowStockThreshold: number | null, today = localDateKey()): StockAttention {
+  const products = new Map<string, { quantity: number; available: number; unknown: boolean }>();
+  for (const item of balances) {
+    if (item.batch_status !== 'ACTIVE' || item.expiry_date < today) continue;
+    const id = item.product_id || item.batch_id;
+    const current = products.get(id) || { quantity: 0, available: 0, unknown: false };
+    const quantity = item.available_quantity == null ? NaN : Number(item.available_quantity);
+    if (!Number.isFinite(quantity)) current.unknown = true;
+    else { current.available += quantity; current.quantity += item.selling_price == null ? 0 : quantity; }
+    products.set(id, current);
+  }
+  const known = [...products.values()].filter(product => !product.unknown);
+  return {
+    outOfStock: known.filter(product => product.available <= 0).length,
+    lowStock: lowStockThreshold === null ? 0 : known.filter(product => product.quantity > 0 && product.quantity <= lowStockThreshold).length,
+    lowStockThreshold,
+  };
 }
 
 export function getExpiryAttention(risk: ExpiryRisk[]) {

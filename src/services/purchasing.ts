@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { hasDecimalPrecision, validDateOnly } from '../domain/numericInput';
 import { supabase } from '@/lib/supabase';
 
 type Supplier = {
@@ -56,6 +57,8 @@ type PurchaseReceipt = {
   created_at: string;
 };
 
+type PurchaseReceiptLine = { id: string; organization_id: string; receipt_id: string; purchase_order_line_id: string; batch_id: string; quantity: number; unit_cost: number | null; inventory_movement_id: string | null; created_at: string };
+
 type PurchasingDatabase = {
   public: {
     Tables: {
@@ -67,6 +70,7 @@ type PurchasingDatabase = {
       };
       purchase_orders: { Row: PurchaseOrder; Insert: never; Update: never; Relationships: [] };
       purchase_order_lines: { Row: PurchaseOrderLine; Insert: never; Update: never; Relationships: [] };
+      purchase_receipt_lines: { Row: PurchaseReceiptLine; Insert: never; Update: never; Relationships: [] };
       purchase_receipts: { Row: PurchaseReceipt; Insert: never; Update: never; Relationships: [] };
     };
     Views: Record<string, never>;
@@ -101,12 +105,13 @@ type PurchasingDatabase = {
   };
 };
 
-const db = supabase as unknown as SupabaseClient<PurchasingDatabase>;
+export const purchasingDb = supabase as unknown as SupabaseClient<PurchasingDatabase>;
+const db = purchasingDb;
 
 export type PurchaseOrderWithSupplier = PurchaseOrder & { supplier_name: string };
-export type PurchaseOrderLineWithProduct = PurchaseOrderLine & { product_name: string };
+export type PurchaseOrderLineWithProduct = PurchaseOrderLine & { product_name: string; stock_unit?: string };
 
-function normalizedOperationKey(prefix: string, scope: string, reference: string): string {
+export function normalizedOperationKey(prefix: string, scope: string, reference: string): string {
   return `${prefix}:${scope}:${reference.trim().toLowerCase()}`;
 }
 
@@ -155,9 +160,10 @@ export async function createPurchaseOrder(input: {
   expectedAt?: string;
   notes?: string;
   lines: { productId: string; quantity: number; unitCost?: number | null }[];
+  idempotencyKey?: string;
 }): Promise<string> {
+  if (input.lines.some((line) => !line.productId || !Number.isFinite(line.quantity) || line.quantity <= 0 || !hasDecimalPrecision(line.quantity, 3) || (line.unitCost != null && (!Number.isFinite(line.unitCost) || line.unitCost < 0 || !hasDecimalPrecision(line.unitCost, 2))))) throw new Error('PURCHASE_ORDER_INVALID_LINE');
   const payload = input.lines
-    .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0)
     .map((line) => ({ product_id: line.productId, quantity: line.quantity, unit_cost: line.unitCost ?? null }));
   if (!payload.length) throw new Error('PURCHASE_ORDER_REQUIRES_LINES');
 
@@ -170,7 +176,7 @@ export async function createPurchaseOrder(input: {
     p_expected_at: input.expectedAt?.trim() || null,
     p_notes: input.notes?.trim() || null,
     p_lines: payload,
-    p_idempotency_key: normalizedOperationKey('purchase-order', input.organizationId, reference),
+    p_idempotency_key: input.idempotencyKey ?? normalizedOperationKey('purchase-order', input.organizationId, reference),
   });
   if (error) throw error;
   return data;
@@ -179,21 +185,30 @@ export async function createPurchaseOrder(input: {
 export async function loadPurchaseOrderLines(organizationId: string, purchaseOrderId: string, productNames: Map<string, string>): Promise<PurchaseOrderLineWithProduct[]> {
   const { data, error } = await db.from('purchase_order_lines').select('*').eq('organization_id', organizationId).eq('purchase_order_id', purchaseOrderId).order('created_at');
   if (error) throw error;
-  return data.map((line) => ({ ...line, product_name: productNames.get(line.product_id) ?? line.product_id.slice(0, 8) }));
+  if (!data.length) return [];
+  const { data: products, error: productsError } = await supabase.from('products').select('id,name,stock_unit').eq('organization_id', organizationId).in('id', [...new Set(data.map((line) => line.product_id))]);
+  if (productsError) throw productsError;
+  const details = new Map(products.map((product) => [product.id, product]));
+  return data.map((line) => ({ ...line, stock_unit: details.get(line.product_id)?.stock_unit ?? 'unit', product_name: details.get(line.product_id)?.name ?? productNames.get(line.product_id) ?? line.product_id.slice(0, 8) }));
 }
 
 export async function receivePurchaseOrder(input: {
   purchaseOrderId: string;
   receiptNumber: string;
+  idempotencyKey?: string;
   supplierInvoiceNumber?: string;
   notes?: string;
   lines: { purchaseOrderLineId: string; quantity: number; unitCost?: number | null; sellingPrice?: number | null; lotNumber: string; expiryDate: string }[];
 }): Promise<string> {
-  if (input.lines.some((line) => line.sellingPrice !== undefined && line.sellingPrice !== null && (!Number.isFinite(line.sellingPrice) || line.sellingPrice <= 0))) {
+  if (input.lines.some((line) => line.sellingPrice !== undefined && line.sellingPrice !== null && (!Number.isFinite(line.sellingPrice) || line.sellingPrice <= 0 || !hasDecimalPrecision(line.sellingPrice, 2)))) {
     throw new Error('INVALID_BATCH_SELLING_PRICE');
   }
+  const seen = new Set<string>();
+  if (input.lines.some((line) => {
+    const duplicate = seen.has(line.purchaseOrderLineId); seen.add(line.purchaseOrderLineId);
+    return duplicate || !Number.isFinite(line.quantity) || line.quantity <= 0 || !hasDecimalPrecision(line.quantity, 3) || !line.lotNumber.trim() || !validDateOnly(line.expiryDate.trim()) || (line.unitCost != null && (!Number.isFinite(line.unitCost) || line.unitCost < 0 || !hasDecimalPrecision(line.unitCost, 2)));
+  })) throw new Error('RECEIPT_ROW_INVALID');
   const payload = input.lines
-    .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0)
     .map((line) => ({
       purchase_order_line_id: line.purchaseOrderLineId,
       quantity: line.quantity,
@@ -211,7 +226,7 @@ export async function receivePurchaseOrder(input: {
     p_supplier_invoice_number: input.supplierInvoiceNumber?.trim() || null,
     p_lines: payload,
     p_notes: input.notes?.trim() || null,
-    p_idempotency_key: normalizedOperationKey('purchase-receipt', input.purchaseOrderId, reference),
+    p_idempotency_key: input.idempotencyKey ?? normalizedOperationKey('purchase-receipt', input.purchaseOrderId, reference),
   });
   if (error) throw error;
   return data;
@@ -224,3 +239,19 @@ export async function loadReceipts(organizationId: string, branchId: string): Pr
 }
 
 export type { Supplier, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt };
+
+/** Maintain the same supplier record so historical order references survive. */
+export async function updateSupplier(input: {
+  organizationId: string; supplierId: string; name: string; phone?: string; email?: string; address?: string; code?: string;
+}): Promise<Supplier> {
+  if (!input.name.trim()) throw new Error('SUPPLIER_NAME_REQUIRED');
+  const { data, error } = await db.from('suppliers').update({ name: input.name.trim(), phone: input.phone?.trim() || null, email: input.email?.trim() || null, address: input.address?.trim() || null, code: input.code?.trim() || null })
+    .eq('organization_id', input.organizationId).eq('id', input.supplierId).select('*').single();
+  if (error) throw error;
+  return data;
+}
+export async function setSupplierActive(organizationId: string, supplierId: string, active: boolean): Promise<Supplier> {
+  const { data, error } = await db.from('suppliers').update({ status: active ? 'active' : 'inactive' }).eq('organization_id', organizationId).eq('id', supplierId).select('*').single();
+  if (error) throw error;
+  return data;
+}

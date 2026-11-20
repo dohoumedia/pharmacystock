@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { receivePurchaseOrder } from './purchasing';
 
 const { rpc } = vi.hoisted(() => ({ rpc: vi.fn() }));
 
@@ -6,7 +7,6 @@ vi.mock('@/lib/supabase', () => ({
   supabase: { rpc },
 }));
 
-import { receivePurchaseOrder } from './purchasing';
 
 describe('receivePurchaseOrder selling-price contract', () => {
   beforeEach(() => {
@@ -70,6 +70,23 @@ describe('receivePurchaseOrder selling-price contract', () => {
         expiryDate: '2027-09-13',
       }],
     })).rejects.toThrow('INVALID_BATCH_SELLING_PRICE');
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { quantity: 2, lotNumber: '', expiryDate: '2028-01-01' },
+    { quantity: Number.NaN, lotNumber: 'LOT', expiryDate: '2028-01-01' },
+    { quantity: 2, lotNumber: 'LOT', expiryDate: '2027-02-29' },
+  ])('rejects the whole receipt when an intended row is incomplete', async (invalid) => {
+    await expect(receivePurchaseOrder({ purchaseOrderId: 'po', receiptNumber: 'receipt', lines: [
+      { purchaseOrderLineId: 'valid', quantity: 1, lotNumber: 'VALID', expiryDate: '2028-01-01', sellingPrice: 3 },
+      { purchaseOrderLineId: 'invalid', sellingPrice: 3, ...invalid },
+    ] })).rejects.toThrow('RECEIPT_ROW_INVALID');
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it('rejects duplicate intended receipt lines before the RPC', async () => {
+    const line = { purchaseOrderLineId: 'same-line', quantity: 1, lotNumber: 'LOT', expiryDate: '2028-01-01', sellingPrice: 3 };
+    await expect(receivePurchaseOrder({ purchaseOrderId: 'po', receiptNumber: 'receipt', lines: [line, line] })).rejects.toThrow('RECEIPT_ROW_INVALID');
     expect(rpc).not.toHaveBeenCalled();
   });
 });

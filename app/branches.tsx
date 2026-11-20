@@ -1,106 +1,60 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
-import { Link } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import { ScrollView, StyleSheet } from 'react-native';
+import { useTranslation } from '../src/i18n/useTranslation';
+import { Alert, Button, FormField, PageHeader, Screen, Stack, StatusBadge, Surface, SupportingText, TextField } from '@/components/ui';
 import { useOrganization } from '@/providers/OrganizationProvider';
-import { errorPresentationKey } from '@/utils/errorPresentation';
+import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { createBranch } from '@/services/organization';
+import { setupErrorKey } from '@/services/ownerSetup';
+import { spacing } from '@/theme/tokens';
+import { newBranchId } from '@/domain/ownerSetup';
 
 export default function BranchesScreen() {
-  const { t } = useTranslation();
-  const { organization, branches, can, refresh } = useOrganization();
-  const [name, setName] = useState('');
-  const [code, setCode] = useState('');
-  const [city, setCity] = useState('');
-  const [phone, setPhone] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const canManage = can('branch.manage');
-
+  const { t } = useTranslation(); const { isOnline } = useConnectivity();
+  const { organization, branches, managementBranches, configurationBranches, branch: current, can, refresh, setBranchId, loading, error: contextError, usingCachedData } = useOrganization();
+  const visibleBranches = configurationBranches ?? managementBranches ?? branches;
+  const [name, setName] = useState(''); const [code, setCode] = useState(''); const [city, setCity] = useState(''); const [phone, setPhone] = useState('');
+  const [saving, setSaving] = useState(false); const [error, setError] = useState<string | null>(null); const [success, setSuccess] = useState(false);
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState(newBranchId);
   const submit = async () => {
-    if (!organization || !name.trim()) return;
-    setSaving(true);
-    setError(null);
+    if (saving || !organization || !isOnline || usingCachedData) return;
+    if (!name.trim()) { setError('setup.errors.branchName'); return; }
+    setSaving(true); setError(null); setSuccess(false);
     try {
-      await createBranch({
-        organization_id: organization.id,
-        name: name.trim(),
-        code: code.trim() || null,
-        city: city.trim() || null,
-        phone: phone.trim() || null,
-        country_code: organization.country_code,
-        timezone: organization.timezone,
-      });
-      setName('');
-      setCode('');
-      setCity('');
-      setPhone('');
-      await refresh();
-    } catch (cause) {
-      setError(t(errorPresentationKey(cause)));
-    } finally {
-      setSaving(false);
-    }
+      if (!createdId) {
+        const created = await createBranch({ id: requestId, organization_id: organization.id, name: name.trim(), code: code.trim() || null, city: city.trim() || null, phone: phone.trim() || null });
+        setCreatedId(created.id);
+      }
+      if (await refresh()) setSuccess(true); else setError('setup.refreshFailed');
+    } catch (cause) { setError(setupErrorKey(cause)); } finally { setSaving(false); }
   };
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>{t('organization.branchesTitle')}</Text>
-            <Text style={styles.subtitle}>{t('organization.branchesSubtitle')}</Text>
-          </View>
-          <Link href="/" asChild>
-            <Pressable style={styles.secondaryButton} accessibilityRole="button">
-              <Text style={styles.secondaryButtonText}>{t('organization.back')}</Text>
-            </Pressable>
-          </Link>
-        </View>
-
-        {branches.map((branch) => (
-          <View key={branch.id} style={styles.card}>
-            <Text style={styles.branchName}>{branch.name}</Text>
-            <Text style={styles.meta}>{branch.code || t('common.noData')}</Text>
-            <Text style={styles.meta}>{branch.city || ''}</Text>
-            <Text style={styles.meta}>{branch.phone || ''}</Text>
-          </View>
-        ))}
-
-        {canManage ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t('organization.addBranch')}</Text>
-            <TextInput value={name} onChangeText={setName} placeholder={t('organization.branchName')} style={styles.input} />
-            <TextInput value={code} onChangeText={setCode} placeholder={t('organization.branchCode')} style={styles.input} autoCapitalize="characters" />
-            <TextInput value={city} onChangeText={setCity} placeholder={t('organization.city')} style={styles.input} />
-            <TextInput value={phone} onChangeText={setPhone} placeholder={t('organization.phone')} style={styles.input} keyboardType="phone-pad" />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable accessibilityRole="button" disabled={saving || !name.trim()} onPress={() => void submit()} style={[styles.primaryButton, (saving || !name.trim()) && styles.disabled]}>
-              <Text style={styles.primaryButtonText}>{saving ? t('common.loading') : t('common.save')}</Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
-  );
+  return <ScrollView><Screen style={styles.screen}><Stack>
+    <PageHeader title={t('organization.branchesTitle')} subtitle={t('organization.branchesSubtitle')} />
+    <SupportingText>{t('staffReady.branchSelectionHint')}</SupportingText>
+    {loading ? <SupportingText>{t('common.loading')}</SupportingText> : null}
+    {contextError ? <Alert tone="danger" title={t(contextError)} /> : null}
+    {usingCachedData ? <Alert tone="info" title={t('setup.cachedBranches')} /> : null}
+    <Button label={t('common.retry')} variant="ghost" disabled={!isOnline || loading} onPress={() => void refresh()} />
+    {!loading && !branches.length ? <Alert tone="info" title={t(can('branch.manage') && !visibleBranches.length ? 'setup.noBranches' : 'staffReady.noAccess')} /> : null}
+    {visibleBranches.map((branch) => <Surface key={branch.id}><Stack>
+      <SupportingText>{branch.name} · {t(`settingsReady.${branch.status}`)}</SupportingText><SupportingText>{[branch.code, branch.city, branch.phone].filter(Boolean).join(' · ')}</SupportingText>
+      {current?.id === branch.id ? <StatusBadge tone="success" label={t('setup.currentBranch')} /> : branches.some((item) => item.id === branch.id) ? <Button label={t('setup.switchBranch', { name: branch.name })} variant="secondary" onPress={() => setBranchId(branch.id)} /> : <SupportingText>{t('staffReady.managementOnly')}</SupportingText>}
+    </Stack></Surface>)}
+    {can('branch.manage') ? <Button label={t('settingsReady.title')} variant="secondary" onPress={() => router.push('/settings')} /> : null}
+    {can('branch.manage') ? <Surface><Stack>
+      <SupportingText>{t('organization.addBranch')}</SupportingText>
+      {(['name', 'code', 'city', 'phone'] as const).map((field) => {
+        const fields = { name: [name, setName, 'organization.branchName'], code: [code, setCode, 'organization.branchCode'], city: [city, setCity, 'organization.city'], phone: [phone, setPhone, 'organization.phone'] } as const;
+        const [value, change, label] = fields[field];
+        return <FormField key={field} required={field === 'name'} label={t(label)}><TextField accessibilityLabel={t(label)} value={value} onChangeText={change} editable={!saving && !createdId} maxLength={160} keyboardType={field === 'phone' ? 'phone-pad' : 'default'} /></FormField>;
+      })}
+      {!isOnline || usingCachedData ? <Alert tone="warning" title={t('setup.onlineRequired')} /> : null}
+      {error ? <Alert tone="danger" title={t(error)} /> : null}
+      {success ? <Alert tone="success" title={t('setup.branchCreated')} /> : null}
+      {!success ? <Button label={t(createdId ? 'common.retry' : 'common.save')} loading={saving} disabled={!isOnline || usingCachedData} onPress={() => void submit()} /> : <Button label={t('organization.addBranch')} variant="secondary" onPress={() => { setName(''); setCode(''); setCity(''); setPhone(''); setCreatedId(null); setRequestId(newBranchId()); setSuccess(false); }} />}
+    </Stack></Surface> : null}
+  </Stack></Screen></ScrollView>;
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F6F8FC' },
-  container: { padding: 24, gap: 16, width: '100%', maxWidth: 900, alignSelf: 'center' },
-  headerRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
-  headerText: { flex: 1, minWidth: 260, gap: 4 },
-  title: { fontSize: 28, fontWeight: '800', color: '#102A5C' },
-  subtitle: { fontSize: 15, color: '#667085' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#102A5C' },
-  branchName: { fontSize: 18, fontWeight: '700', color: '#102A5C' },
-  meta: { color: '#667085', fontSize: 13 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, gap: 12, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 1 },
-  input: { minHeight: 44, borderWidth: 1, borderColor: '#D0D5DD', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#FFFFFF', color: '#101828' },
-  error: { color: '#9F1239', fontSize: 14 },
-  primaryButton: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', borderRadius: 10, backgroundColor: '#102A5C', paddingVertical: 12, paddingHorizontal: 18 },
-  primaryButtonText: { color: '#FFFFFF', fontWeight: '700' },
-  secondaryButton: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#98A2B3', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
-  secondaryButtonText: { color: '#344159', fontWeight: '700' },
-  disabled: { opacity: 0.45 },
-});
+const styles = StyleSheet.create({ screen: { width: '100%', maxWidth: 900, alignSelf: 'center', gap: spacing.lg } });

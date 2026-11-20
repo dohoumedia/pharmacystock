@@ -1,0 +1,267 @@
+{
+  "original_result": {
+    "passed": 15,
+    "failed": 10,
+    "skipped": 0
+  },
+  "classification_totals": {
+    "REAL SCHEMA DEFECT": 0,
+    "OBSOLETE ASSERTION": 3,
+    "FIXTURE/ASSUMPTION DEFECT": 7,
+    "ORDER/STATE DEPENDENCY": 0,
+    "UNKNOWN": 0
+  },
+  "failures": [
+    {
+      "suite": "business_settings_functional.sql",
+      "classification": "OBSOLETE ASSERTION",
+      "original_failing_sql": "insert into public.expiry_alerts(organization_id,branch_id,batch_id,alert_type,threshold_days,expiry_date_snapshot) values(org,br,batch,'EXPIRY_WARNING',1002,current_date+20) returning id into a;\nperform pg_temp.settings_assert(exists(select 1 from public.notifications where recipient_user_id='66000000-0000-0000-0000-000000000001' and payload->>'alert_id'=a::text),'enabled preference receives future alert');",
+      "original_database_error": "ERROR:  FAILED: enabled preference receives future alert\nCONTEXT:  PL/pgSQL function pg_temp_74.settings_assert(boolean,text) line 2 at RAISE\nSQL statement \"SELECT pg_temp.settings_assert(exists(select 1 from public.notifications where recipient_user_id='66000000-0000-0000-0000-000000000001' and payload->>'alert_id'=a::text),'enabled preference receives future alert')\"\nPL/pgSQL function inline_code_block line 8 at PERFORM\n",
+      "expected": "Enabled preferences produce an expiry notification from an alert insert.",
+      "actual": "No notifications; expiry_alert_notify trigger count is zero.",
+      "related_schema_objects": [
+        "expiry_alert_notify",
+        "notifications",
+        "notification_preferences",
+        "refresh_operational_notifications"
+      ],
+      "migration_evolution": [
+        "20260823171000_sprint7_import_notifications_customer_sales.sql creates insert-trigger fanout with payload.alert_id.",
+        "20261118191935_operational_settings_configuration.sql makes that worker preference-aware.",
+        "20261118213000_notifications_operational_followup.sql explicitly drops the trigger and supersedes it with recipient refresh, condition_key and batch payload."
+      ],
+      "current_application_contract": "Superseded transport; current invariant is preference-aware current-condition inbox refresh.",
+      "application_and_test_evidence": [
+        "src/services/notifications.ts: refreshNotificationConditions, notificationList, unread queries; typed RPC and resolved_at contract.",
+        "src/domain/notificationFollowup.ts: OperationalNotification payload and condition fields.",
+        "supabase/tests/notifications_functional.sql; src/services/notifications.test.ts; docs/NOTIFICATIONS_OPERATIONAL_FOLLOWUP_PACKAGE.md."
+      ],
+      "correction": "Use current RPC under authenticated role; verify absent default, opt-out closure/no new rows, re-enable and repeat deduplication on expiry:<batch>."
+    },
+    {
+      "suite": "catalog_opening_stock_functional.sql",
+      "classification": "OBSOLETE ASSERTION",
+      "original_failing_sql": "imported:=public.commit_import_job(job);\nperform public.catalog_test_assert(imported=0,'retry does not reimport successful row');",
+      "original_database_error": "ERROR:  FAILED: retry does not reimport successful row\nCONTEXT:  PL/pgSQL function catalog_test_assert(boolean,text) line 2 at RAISE\nSQL statement \"SELECT public.catalog_test_assert(imported=0,'retry does not reimport successful row')\"\nPL/pgSQL function inline_code_block line 88 at PERFORM\n",
+      "expected": "Retry of a partial-failed job returns zero newly imported rows.",
+      "actual": "Returns saved cumulative count 1; ledger count remains exactly 1.",
+      "related_schema_objects": [
+        "commit_import_job",
+        "import_jobs",
+        "import_rows",
+        "inventory_movements"
+      ],
+      "migration_evolution": [
+        "20260823171000_sprint7_import_notifications_customer_sales.sql creates initial import RPC.",
+        "20261118035150_catalog_opening_stock.sql replaces opening import handling.",
+        "20261118215803_controlled_imports_onboarding.sql intentionally returns saved valid_rows for both COMPLETED and FAILED terminal jobs."
+      ],
+      "current_application_contract": "Superseded result-count interpretation; exactly-once stock posting remains current.",
+      "application_and_test_evidence": [
+        "src/services/coreCompletion.ts: numeric commitImportJob RPC and ImportJob.valid_rows/invalid_rows.",
+        "src/components/ImportWorkbench.tsx: saved job/result workflow.",
+        "supabase/tests/imports_onboarding_functional.sql verifies cumulative partial retry and unchanged ctid; src/services/imports.test.ts; docs/CONTROLLED_IMPORTS_ONBOARDING_PACKAGE.md."
+      ],
+      "correction": "Expect saved cumulative result 1; retain original successful-row, invalid-row error and exactly-one ledger assertions."
+    },
+    {
+      "suite": "operational_reports_functional.sql",
+      "classification": "FIXTURE/ASSUMPTION DEFECT",
+      "original_failing_sql": "r:=public.read_operational_report(org,br,'expiry',today,today,'','expired');\nperform pg_temp.report_assert((r->>'total')::int=1 and r#>>'{rows,0,status}'='ACTIVE' and r#>>'{rows,0,risk}'='expired','actual expired date wins over stored status');",
+      "original_database_error": "ERROR:  FAILED: actual expired date wins over stored status\nCONTEXT:  PL/pgSQL function pg_temp_94.report_assert(boolean,text) line 2 at RAISE\nSQL statement \"SELECT pg_temp.report_assert((r->>'total')::int=1 and r#>>'{rows,0,status}'='ACTIVE' and r#>>'{rows,0,risk}'='expired','actual expired date wins over stored status')\"\nPL/pgSQL function inline_code_block line 30 at PERFORM\n",
+      "expected": "One ACTIVE batch has an expiry date earlier than the pharmacy business date.",
+      "actual": "Report total=0; expiry=2026-11-18, business_date=2026-11-18, session current_date=2026-11-19. The supposed expired fixture was still current locally.",
+      "related_schema_objects": [
+        "read_operational_report",
+        "batches.expiry_date",
+        "organizations.timezone"
+      ],
+      "migration_evolution": [
+        "20260823090000_sprint2_products_batches.sql defines batch expiry.",
+        "20261118175946_operational_reports_exports.sql defines v_today from statement_timestamp in branch/organization timezone; current-date expiry risk ignores requested historical reporting window."
+      ],
+      "current_application_contract": "Current contract; expected expired-risk behavior and ACTIVE stored status are retained.",
+      "application_and_test_evidence": [
+        "src/services/operationalReports.ts; src/domain/operationalReports.ts; src/types/database.ts batch expiry/status.",
+        "supabase/tests/operational_reports_functional.sql; src/services/operationalReports.test.ts; daily_operations_acceptance.sql."
+      ],
+      "correction": "Set the fixture expiry to the pharmacy business date minus one; leave every report expectation unchanged."
+    },
+    {
+      "suite": "owner_first_use_functional.sql",
+      "classification": "FIXTURE/ASSUMPTION DEFECT",
+      "original_failing_sql": "insert into public.suppliers(organization_id,status) values(current_setting('test.org_id')::uuid,'active');",
+      "original_database_error": "NOTICE:  PASS pharmacy + initial branch + owner context + retry + branch creation + pending invitation\nNOTICE:  PASS verified-email inbox + acceptance + membership + branch + retry\nERROR:  null value in column \"name\" of relation \"suppliers\" violates not-null constraint\nDETAIL:  Failing row contains (69396f89-4e71-4ccc-8fed-c9160d20fb02, 5bcffcd6-bbe3-44bb-863e-30fd8135841f, null, null, null, null, null, active, 2026-11-19 00:37:23.226501+00, 2026-11-19 00:37:23.226501+00).\n",
+      "expected": "Minimal supplier/product/PO inserts complete owner checklist.",
+      "actual": "Supplier name NOT NULL fails first; product name and required PO supplier/reference/actor would also be invalid; lower-case ordered is supported but incomplete rows are not.",
+      "related_schema_objects": [
+        "suppliers",
+        "products",
+        "purchase_orders",
+        "owner_setup_progress"
+      ],
+      "migration_evolution": [
+        "20260823090000_sprint2_products_batches.sql requires product name.",
+        "20260823110000_sprint4_purchasing_receiving.sql requires supplier name and real PO fields.",
+        "20261118025513_owner_first_use_and_invitations.sql adds checklist over actual rows.",
+        "20261118035150_catalog_opening_stock.sql adds create_catalog_product."
+      ],
+      "current_application_contract": "Current checklist contract, unsupported selective-fixture DML.",
+      "application_and_test_evidence": [
+        "src/services/ownerSetup.ts; src/services/organization.ts; src/services/catalogReadiness.ts; src/services/purchasing.ts.",
+        "owner_first_use_functional.sql; ownerSetup.test.ts; purchasing_readiness_functional.sql; daily_operations_acceptance.sql."
+      ],
+      "correction": "Create named supplier and use current catalog/PO RPCs as authenticated owner; retain initial and final exact checklist expectations."
+    },
+    {
+      "suite": "sprint2_catalog_rls.sql",
+      "classification": "FIXTURE/ASSUMPTION DEFECT",
+      "original_failing_sql": "insert into public.manufacturers(id,organization_id,name) values ('daaaaaaa-ma00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','Maker A'),('dbbbbbbb-ma00-0000-0000-000000000001','dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','Maker B');",
+      "original_database_error": "ERROR:  invalid input syntax for type uuid: \"daaaaaaa-ma00-0000-0000-000000000001\"\nLINE 3: ('daaaaaaa-ma00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-...\n         ^\n",
+      "expected": "UUID fixture identities permit catalog isolation checks to execute.",
+      "actual": "Invalid UUID ma00; later pr00 product identities also contain non-hex letters.",
+      "related_schema_objects": [
+        "manufacturers.id",
+        "products.id",
+        "product_barcodes.product_id",
+        "batches.product_id"
+      ],
+      "migration_evolution": [
+        "20260823090000_sprint2_products_batches.sql defines UUID identities and tenant keys.",
+        "20260823092000_sprint2_product_create_rpc.sql adds current-compatible catalog creation RPC."
+      ],
+      "current_application_contract": "Current UUID and isolation contracts; fixtures never valid UUIDs.",
+      "application_and_test_evidence": [
+        "src/types/database.ts; src/services/catalogReadiness.ts; catalog_opening_stock_functional.sql."
+      ],
+      "correction": "Replace ma00 with fa00 and pr00 with ad00 consistently across references; retain every RLS/creation/hard-delete assertion."
+    },
+    {
+      "suite": "sprint3_inventory.sql",
+      "classification": "FIXTURE/ASSUMPTION DEFECT",
+      "original_failing_sql": "-- Ledger rows are immutable.\ndo $$\ndeclare v_id uuid;\nbegin\n  select id into v_id from public.inventory_movements where idempotency_key='test:receipt:1';\n  begin\n    update public.inventory_movements set reason='mutated' where id=v_id;\n    raise exception 'INV-T-004 failed: ledger update was allowed';\n  exception when object_not_in_prerequisite_state then null;\n  end;\nend $$;",
+      "original_database_error": "ERROR:  permission denied for table inventory_movements\nCONTEXT:  SQL statement \"update public.inventory_movements set reason='mutated' where id=v_id\"\nPL/pgSQL function inline_code_block line 6 at SQL statement\n",
+      "expected": "Authenticated mutation reaches immutable-ledger trigger; completed count replay returns 23514.",
+      "actual": "Authenticated UPDATE is denied at table privileges (42501). Subsequent malformed end $; and replay expectation were masked. Completed-row FOR UPDATE returns P0002 STOCK_COUNT_NOT_FOUND under OPEN-only UPDATE RLS.",
+      "related_schema_objects": [
+        "inventory_movements_immutable",
+        "inventory_movements privileges",
+        "inventory_stock_counts_update",
+        "complete_inventory_stock_count"
+      ],
+      "migration_evolution": [
+        "20260823083100_sprint3_inventory_ledger.sql creates immutable trigger, OPEN-only count UPDATE policy and SELECT FOR UPDATE worker.",
+        "20260823155700_sprint4_inventory_read_grants_fix.sql grants SELECT only.",
+        "20260823162000_sprint5_inventory_write_grants_fix.sql grants INSERT, never ledger UPDATE.",
+        "20260920043646_add_stock_count_audit_log.sql adds completion audit.",
+        "20261118132215_inventory_count_completion_audit_boundary.sql preserves invoker locking; moves audit into trusted trigger."
+      ],
+      "current_application_contract": "Current immutability and one-time reconciliation; assumed enforcement layer/error code is incorrect, not an intentional later contract change.",
+      "application_and_test_evidence": [
+        "src/services/inventoryCompletion.ts: reconcileInventoryCount reads completed status and recovers before replay.",
+        "inventory_completion_functional.sql already accepts check_violation or no_data_found and verifies unchanged ledger/audit.",
+        "src/services/inventoryCompletion.test.ts; daily_operations_acceptance.sql."
+      ],
+      "correction": "Require auth UPDATE denial; independently require privileged UPDATE and DELETE to raise exact 55000/INVENTORY_LEDGER_IMMUTABLE; fix delimiter; require exact replay P0002 message and unchanged balance, correction count and audit."
+    },
+    {
+      "suite": "sprint5_expiry.sql",
+      "classification": "FIXTURE/ASSUMPTION DEFECT",
+      "original_failing_sql": "do $ begin\n  if (select status from public.batches where id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2') <> 'RECALLED' then raise exception 'EXP-T-008 recalled status failed'; end if;\n  if exists(\n    select 1 from public.get_fefo_batches(\n      'faaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',\n      'faaaaaaa-1111-1111-1111-aaaaaaaaaaaa',\n      'faaaaaaa-2222-2222-2222-aaaaaaaaaaaa'\n    ) where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2'\n  ) then raise exception 'EXP-T-009 recalled batch remained FEFO-eligible'; end if;\n  if not exists(select 1 from public.expiry_actions where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2' and action_type='RECALL') then raise exception 'EXP-T-010 recall action missing'; end if;\nend $;",
+      "original_database_error": "ERROR:  syntax error at or near \"$\"\nLINE 1: do $ begin\n           ^\n",
+      "expected": "Recall/FEFO and remaining supplier-return/disposal assertions execute.",
+      "actual": "SQL syntax error at single dollar delimiter.",
+      "related_schema_objects": [
+        "record_expiry_action",
+        "get_fefo_batches",
+        "return_batch_to_supplier",
+        "dispose_batch"
+      ],
+      "migration_evolution": [
+        "20260823161000_sprint5_expiry_fefo_foundation.sql creates expiry/FEFO APIs.",
+        "20260823161500_sprint5_expiry_actions.sql adds action workers.",
+        "20260920045243_add_batch_recall_action.sql adds recall action support."
+      ],
+      "current_application_contract": "Current safety contracts; SQL script delimiter is invalid independently of schema.",
+      "application_and_test_evidence": [
+        "src/services/expiry.ts; src/services/expiryCompletion.ts; expiry_completion_functional.sql; daily_operations_acceptance.sql."
+      ],
+      "correction": "Correct opening and closing dollar quotes only; retain all 14 checks."
+    },
+    {
+      "suite": "sprint6_sales_history_rls.sql",
+      "classification": "FIXTURE/ASSUMPTION DEFECT",
+      "original_failing_sql": "select public.post_inventory_movement('6baaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','6baaaaaa-1111-1111-1111-aaaaaaaaaaaa','6baaaaaa-4444-4444-4444-aaaaaaaaaaa1','PURCHASE_RECEIPT',1,'sales-history:allowed','seed');",
+      "original_database_error": "ERROR:  new row violates row-level security policy for table \"inventory_movements\"\nCONTEXT:  SQL statement \"insert into public.inventory_movements(\n    organization_id,branch_id,batch_id,movement_type,quantity_delta,unit_cost,\n    reference_type,reference_id,idempotency_key,reason,metadata,occurred_at,created_by\n  ) values (\n    p_organization_id,p_branch_id,p_batch_id,p_movement_type,p_quantity_delta,p_unit_cost,\n    p_reference_type,p_reference_id,p_idempotency_key,p_reason,coalesce(p_metadata,'{}'::jsonb),p_occurred_at,(select auth.uid())\n  ) returning id\"\nPL/pgSQL function post_inventory_movement(uuid,uuid,uuid,text,numeric,text,text,text,text,numeric,jsonb,timestamp with time zone) line 6 at SQL statement\n",
+      "expected": "History reader cashier prepares stock before branch-scoped sales/refund read assertions.",
+      "actual": "42501: new row violates inventory_movements RLS; cashier lacks inventory.adjust.",
+      "related_schema_objects": [
+        "inventory_movements_insert",
+        "role_permissions",
+        "sales/sale_items/sale_refunds/sale_refund_items policies"
+      ],
+      "migration_evolution": [
+        "20260823080000_sprint1_rbac_hardening.sql cashier excludes inventory.adjust.",
+        "20260823083100_sprint3_inventory_ledger.sql insert policy requires inventory.adjust.",
+        "20260920052736_harden_sales_history_branch_rls.sql defines history branch boundaries."
+      ],
+      "current_application_contract": "Current role and history contracts; invalid inventory-seeding actor.",
+      "application_and_test_evidence": [
+        "src/services/sales.ts; src/services/posCompletion.ts; src/types/database.ts sale/refund reads.",
+        "pos_completion_functional.sql; customer_workflow_functional.sql; daily_operations_acceptance.sql."
+      ],
+      "correction": "Prepare stock as database-owner fixture, matching existing blocked-branch seed; restore original cashier for all read assertions. Add genuine allowed-branch sale and item positive controls; retain four blocked-branch checks."
+    },
+    {
+      "suite": "sprint7_core_completion.sql",
+      "classification": "OBSOLETE ASSERTION",
+      "original_failing_sql": "select public.refresh_expiry_alerts('77aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','77aaaaaa-1111-1111-1111-aaaaaaaaaaaa');\ndo $$ begin\n if not exists(select 1 from public.notifications where organization_id='77aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and recipient_user_id='77000000-0000-0000-0000-000000000001' and type='EXPIRY_ALERT') then raise exception 'S7-T-009 expiry notification fanout failed'; end if;\n if not exists(select 1 from public.audit_logs where organization_id='77aaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and entity_type='customers') then raise exception 'S7-T-010 customer audit event missing'; end if;\n if not exists(select 1 from public.subscription_plans where code='CORE_35000' and monthly_price=35000) then raise exception 'S7-T-011 subscription plan missing'; end if;\nend $$;",
+      "original_database_error": "ERROR:  S7-T-009 expiry notification fanout failed\nCONTEXT:  PL/pgSQL function inline_code_block line 2 at RAISE\n",
+      "expected": "Expiry-alert creation automatically fans out inbox rows.",
+      "actual": "S7-T-009 expiry notification fanout failed because insert-trigger delivery was deliberately removed.",
+      "related_schema_objects": [
+        "refresh_expiry_alerts",
+        "expiry_alert_notify",
+        "refresh_operational_notifications",
+        "notifications"
+      ],
+      "migration_evolution": [
+        "20260823171000_sprint7_import_notifications_customer_sales.sql creates old fanout.",
+        "20261118191935_operational_settings_configuration.sql updates old worker.",
+        "20261118213000_notifications_operational_followup.sql drops trigger and introduces current recipient refresh."
+      ],
+      "current_application_contract": "Superseded automatic fanout; current owner notification visibility remains required.",
+      "application_and_test_evidence": [
+        "src/services/notifications.ts typed refresh RPC and inbox read; src/providers/NotificationProvider.tsx.",
+        "notifications_functional.sql; src/services/notifications.test.ts; daily_operations_acceptance.sql."
+      ],
+      "correction": "Invoke current operational notification refresh after expiry refresh; retain S7-T-009 and every other original expectation."
+    },
+    {
+      "suite": "sprint8_branch_transfers.sql",
+      "classification": "FIXTURE/ASSUMPTION DEFECT",
+      "original_failing_sql": "if (select count(*) from public.audit_logs where event_type='transfer.created' and entity_id=a::text)<>1 then raise exception 'S8-T-012 transfer create audit missing or duplicated'; end if;",
+      "original_database_error": "ERROR:  S8-T-012 transfer create audit missing or duplicated\nCONTEXT:  PL/pgSQL function inline_code_block line 5 at RAISE\n",
+      "expected": "Inventory officer sees one raw transfer-created audit row and later metadata.",
+      "actual": "Stored=1, visible to actor=0; actor audit.read=false. read_stock_transfer_context history returns the stored create event.",
+      "related_schema_objects": [
+        "audit_logs_select_authorized",
+        "role_permissions",
+        "transfer audit workers",
+        "read_stock_transfer_context"
+      ],
+      "migration_evolution": [
+        "20260823080000_sprint1_rbac_hardening.sql omits audit.read for INVENTORY_OFFICER and retains restricted audit SELECT.",
+        "20260823171000_sprint8_branch_transfers.sql creates transfer workflow; 20260823174000_sprint8_transfer_rls_hardening.sql and 20260823175000_sprint8_transfer_workflow_hardening.sql refine it.",
+        "20260920041952_add_transfer_audit_log.sql records lifecycle events.",
+        "20261118143500_transfer_operational_context.sql intentionally supplies guarded transfer-specific history without broadening raw audit access."
+      ],
+      "current_application_contract": "Current audit creation and restricted raw access; assumption about observer is invalid.",
+      "application_and_test_evidence": [
+        "src/services/transferCompletion.ts: readTransferProjection/loadTransferDetail use typed RPC in src/services/transfers.ts.",
+        "transfer_completion_functional.sql checks inventory-officer context and lifecycle; src/services/transferCompletion.test.ts; daily_operations_acceptance.sql."
+      ],
+      "correction": "Keep source/destination actors for workflow and all existing branch checks. Verify scoped create/approve/receipt-retry history; relocate all six original raw audit count/metadata checks to owner observer, without permission changes."
+    }
+  ]
+}

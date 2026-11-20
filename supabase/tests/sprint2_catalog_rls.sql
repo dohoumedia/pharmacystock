@@ -41,23 +41,23 @@ values
 
 insert into public.manufacturers(id,organization_id,name)
 values
-('daaaaaaa-ma00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','Maker A'),
-('dbbbbbbb-ma00-0000-0000-000000000001','dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','Maker B');
+('daaaaaaa-fa00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','Maker A'),
+('dbbbbbbb-fa00-0000-0000-000000000001','dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','Maker B');
 
 insert into public.products(id,organization_id,name,category_id,manufacturer_id,sku)
 values
-('daaaaaaa-pr00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','Paracetamol 500 mg','daaaaaaa-ca00-0000-0000-000000000001','daaaaaaa-ma00-0000-0000-000000000001','PARA500'),
-('dbbbbbbb-pr00-0000-0000-000000000001','dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','Amoxicillin 500 mg','dbbbbbbb-ca00-0000-0000-000000000001','dbbbbbbb-ma00-0000-0000-000000000001','AMOX500');
+('daaaaaaa-ad00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','Paracetamol 500 mg','daaaaaaa-ca00-0000-0000-000000000001','daaaaaaa-fa00-0000-0000-000000000001','PARA500'),
+('dbbbbbbb-ad00-0000-0000-000000000001','dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','Amoxicillin 500 mg','dbbbbbbb-ca00-0000-0000-000000000001','dbbbbbbb-fa00-0000-0000-000000000001','AMOX500');
 
 insert into public.product_barcodes(organization_id,product_id,barcode,is_primary)
 values
-('daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','daaaaaaa-pr00-0000-0000-000000000001','1111111111111',true),
-('dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','dbbbbbbb-pr00-0000-0000-000000000001','2222222222222',true);
+('daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','daaaaaaa-ad00-0000-0000-000000000001','1111111111111',true),
+('dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','dbbbbbbb-ad00-0000-0000-000000000001','2222222222222',true);
 
 insert into public.batches(id,organization_id,branch_id,product_id,lot_number,expiry_date)
 values
-('daaaaaaa-ba00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','daaaaaaa-1111-1111-1111-aaaaaaaaaaaa','daaaaaaa-pr00-0000-0000-000000000001','LOT-A','2027-12-31'),
-('dbbbbbbb-ba00-0000-0000-000000000001','dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','dbbbbbbb-1111-1111-1111-bbbbbbbbbbbb','dbbbbbbb-pr00-0000-0000-000000000001','LOT-B','2027-12-31');
+('daaaaaaa-ba00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','daaaaaaa-1111-1111-1111-aaaaaaaaaaaa','daaaaaaa-ad00-0000-0000-000000000001','LOT-A','2027-12-31'),
+('dbbbbbbb-ba00-0000-0000-000000000001','dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','dbbbbbbb-1111-1111-1111-bbbbbbbbbbbb','dbbbbbbb-ad00-0000-0000-000000000001','LOT-B','2027-12-31');
 
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
@@ -83,7 +83,7 @@ end $$;
 select public.create_product_with_barcode(
   'daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   'Ibuprofen 400 mg', 'Ibuprofen', null, '400 mg', 'Tablet', '20 tablets', 'IBU400',
-  'daaaaaaa-ca00-0000-0000-000000000001', 'daaaaaaa-ma00-0000-0000-000000000001', '3333333333333'
+  'daaaaaaa-ca00-0000-0000-000000000001', 'daaaaaaa-fa00-0000-0000-000000000001', '3333333333333'
 );
 
 do $$
@@ -129,7 +129,7 @@ end $$;
 do $$
 begin
   begin
-    delete from public.products where id='daaaaaaa-pr00-0000-0000-000000000001';
+    delete from public.products where id='daaaaaaa-ad00-0000-0000-000000000001';
     raise exception 'CAT-T-008 failed: product hard delete allowed';
   exception
     when insufficient_privilege then null;

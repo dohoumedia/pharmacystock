@@ -1,8 +1,12 @@
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { border, borderWidths, elevation, shape, spacing, surface } from '../../theme/tokens';
 import { PageTitle, SupportingText } from './typography';
 import { pageHeaderLayout } from './visualStates';
+
+const subscribeToHydration = () => () => {};
+const clientSnapshot = () => true;
+const serverSnapshot = () => false;
 
 type ViewProps = { children?: ReactNode; style?: StyleProp<ViewStyle>; testID?: string };
 
@@ -31,7 +35,9 @@ export function PageHeader({ title, subtitle, action, style, testID }: {
   title: string; subtitle?: string; action?: ReactNode; style?: StyleProp<ViewStyle>; testID?: string;
 }) {
   const { width } = useWindowDimensions();
-  const layout = pageHeaderLayout(width);
+  // Static rendering has no viewport. Keep each boundary's first layout stable.
+  const hydrated = useSyncExternalStore(subscribeToHydration, clientSnapshot, serverSnapshot);
+  const layout = pageHeaderLayout(hydrated ? width : 0);
   return (
     <View testID={testID} style={[styles.pageHeader, layout === 'stacked' ? styles.stackedHeader : styles.inlineHeader, style]}>
       <View style={styles.headingCopy}>

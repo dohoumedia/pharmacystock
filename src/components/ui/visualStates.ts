@@ -12,7 +12,7 @@ const buttonTones = {
 
 export function buttonVisualStyle(variant: ButtonVariant, state: InteractionState = {}) {
   const tone = buttonTones[variant];
-  return { minHeight: touchTarget, backgroundColor: state.pressed || (state.hovered && variant === 'secondary') ? (variant === 'secondary' ? surface.inset : tone.backgroundColor) : tone.backgroundColor, borderColor: state.focused ? focusRing.color : tone.borderColor, borderWidth: state.focused ? focusRing.width : borderWidths.hairline, opacity: state.disabled ? disabledOpacity : 1, transform: state.pressed ? [{ scale: 0.99 }] : undefined };
+  return { minHeight: touchTarget, backgroundColor: state.pressed || (state.hovered && variant === 'secondary') ? (variant === 'secondary' ? surface.inset : tone.backgroundColor) : tone.backgroundColor, borderColor: state.focused ? focusRing.color : tone.borderColor, borderWidth: state.focused ? focusRing.width : borderWidths.hairline, opacity: state.disabled ? disabledOpacity : 1, transform: state.pressed ? [{ scale: 0.99 }] : [] };
 }
 
 export type TextFieldState = { disabled?: boolean; focused?: boolean; error?: boolean };

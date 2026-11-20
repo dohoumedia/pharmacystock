@@ -1,4 +1,5 @@
 import type { PropsWithChildren } from 'react';
+import { NotificationProvider } from './NotificationProvider';
 import { AuthProvider } from './AuthProvider';
 import { ConnectivityProvider } from './ConnectivityProvider';
 import { OrganizationProvider } from './OrganizationProvider';
@@ -9,7 +10,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     <ConnectivityProvider>
       <AuthProvider>
         <SyncStatusProvider>
-          <OrganizationProvider>{children}</OrganizationProvider>
+          <OrganizationProvider><NotificationProvider>{children}</NotificationProvider></OrganizationProvider>
         </SyncStatusProvider>
       </AuthProvider>
     </ConnectivityProvider>

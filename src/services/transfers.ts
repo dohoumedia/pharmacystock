@@ -1,8 +1,19 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { isTransferBatchEligible } from '@/domain/transferSafety';
+import type { Database } from '../types/database';
+
+export type TransferProjection = {
+  branches: { id: string; name: string; status: string }[];
+  batches: Pick<Database['public']['Tables']['batches']['Row'], 'id' | 'organization_id' | 'branch_id' | 'product_id' | 'lot_number' | 'expiry_date' | 'status'>[];
+  profiles: { user_id: string; display_name: string | null }[];
+  balances: Database['public']['Views']['inventory_balances']['Row'][];
+  movements: Pick<Database['public']['Tables']['inventory_movements']['Row'], 'id' | 'branch_id' | 'batch_id' | 'quantity_delta' | 'reference_id' | 'occurred_at'>[];
+  history: { id: string; event_type: string; created_at: string }[];
+};
 
 export type StockTransfer = {
+  idempotency_key?: string;
   id:string; organization_id:string; source_branch_id:string; destination_branch_id:string;
   transfer_number:string; status:'REQUESTED'|'APPROVED'|'DISPATCHED'|'RECEIVED'|'RECEIVED_WITH_DISCREPANCY'|'CANCELLED';
   notes:string|null; discrepancy_notes:string|null; requested_by:string; approved_by:string|null; dispatched_by:string|null; received_by:string|null;
@@ -21,6 +32,8 @@ type TransferDb={public:{Tables:{
   batches:{Row:{id:string;organization_id:string;branch_id:string;product_id:string;lot_number:string;expiry_date:string;status:string};Insert:never;Update:never;Relationships:[]};
   products:{Row:{id:string;organization_id:string;name:string};Insert:never;Update:never;Relationships:[]};
 };Views:{inventory_balances:{Row:{organization_id:string|null;branch_id:string|null;batch_id:string|null;product_id:string|null;available_quantity:number|null};Relationships:[]}};Functions:{
+  read_stock_transfer_context:{Args:{p_transfer_id:string};Returns:TransferProjection};
+  list_stock_transfer_destinations:{Args:{p_organization_id:string;p_source_branch_id:string};Returns:{id:string;name:string;status:string}[]};
   create_stock_transfer:{Args:{p_organization_id:string;p_source_branch_id:string;p_destination_branch_id:string;p_transfer_number:string;p_lines:{source_batch_id:string;quantity:number}[];p_idempotency_key:string;p_notes?:string|null};Returns:string};
   approve_stock_transfer:{Args:{p_transfer_id:string};Returns:string};
   cancel_stock_transfer:{Args:{p_transfer_id:string;p_reason?:string|null};Returns:string};
@@ -28,7 +41,8 @@ type TransferDb={public:{Tables:{
   receive_stock_transfer:{Args:{p_transfer_id:string;p_received_lines?:{line_id:string;quantity:number;reason?:string}[]|null;p_discrepancy_notes?:string|null};Returns:string};
 };Enums:Record<string,never>;CompositeTypes:Record<string,never>}};
 
-const db=supabase as unknown as SupabaseClient<TransferDb>;
+export const transferDb=supabase as unknown as SupabaseClient<TransferDb>;
+const db=transferDb;
 
 export async function loadTransfers(organizationId:string):Promise<StockTransfer[]>{
   const{data,error}=await db.from('stock_transfers').select('*').eq('organization_id',organizationId).order('created_at',{ascending:false}).limit(100);

@@ -1,9 +1,10 @@
 import type { PropsWithChildren } from 'react';
 import { ScrollViewStyleReset } from 'expo-router/html';
+import { webInitialLocale } from '../src/i18n/webInitialLocale';
 
 export default function Root({ children }: PropsWithChildren) {
   return (
-    <html lang="fr">
+    <html lang={webInitialLocale}>
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />

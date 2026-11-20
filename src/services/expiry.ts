@@ -1,7 +1,12 @@
+import { settingsChanged } from './settingsEvents';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { productsByIds } from './catalogReadiness';
+import { DEFAULT_EXPIRY_THRESHOLDS, expiryCategory, expiryThresholds } from '../domain/expiryCompletion';
 
 export type ExpiryRisk = {
+  stock_unit?: string;
+  available_quantity?: number | null;
   organization_id: string | null;
   branch_id: string | null;
   batch_id: string | null;
@@ -80,7 +85,8 @@ type ExpiryDatabase = {
   };
 };
 
-const db = supabase as unknown as SupabaseClient<ExpiryDatabase>;
+export const expiryDb = supabase as unknown as SupabaseClient<ExpiryDatabase>;
+const db = expiryDb;
 
 export async function refreshExpiryAlerts(organizationId: string, branchId: string): Promise<number> {
   const { data, error } = await db.rpc('refresh_expiry_alerts', { p_organization_id: organizationId, p_branch_id: branchId });
@@ -88,16 +94,35 @@ export async function refreshExpiryAlerts(organizationId: string, branchId: stri
   return data;
 }
 
-export async function loadExpiryRisk(organizationId: string, branchId: string): Promise<ExpiryRisk[]> {
-  const { data, error } = await db.from('expiry_risk').select('*').eq('organization_id', organizationId).eq('branch_id', branchId).order('expiry_date', { ascending: true });
-  if (error) throw error;
-  return data;
+export async function loadExpiryRisk(organizationId: string, branchId: string, configuredThresholds?: number[]): Promise<ExpiryRisk[]> {
+  const thresholds = configuredThresholds ?? (await loadExpiryPolicy(organizationId))?.thresholds_days ?? DEFAULT_EXPIRY_THRESHOLDS;
+  const rows: ExpiryRisk[] = [];
+  for (let offset = 0; ; offset += 200) {
+    const { data, error } = await db.from('expiry_risk').select('*').eq('organization_id', organizationId).eq('branch_id', branchId).order('expiry_date', { ascending: true }).order('batch_id').range(offset, offset + 199);
+    if (error) throw error;
+    const [productsList, balanceResult] = await Promise.all([
+      productsByIds(organizationId, data.flatMap((row) => row.product_id ? [row.product_id] : [])),
+      data.length ? supabase.from('inventory_balances').select('*').eq('organization_id', organizationId).eq('branch_id', branchId).in('batch_id', data.flatMap((row) => row.batch_id ? [row.batch_id] : [])) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (balanceResult.error) throw balanceResult.error;
+    const products = new Map(productsList.map((product) => [product.id, product]));
+    const balances = new Map(balanceResult.data.map((balance) => [balance.batch_id, balance]));
+    rows.push(...data.map((row) => {
+      const category = expiryCategory(row.days_remaining, thresholds);
+      return { ...row, available_quantity: balances.get(row.batch_id ?? '')?.available_quantity ?? null, stock_unit: products.get(row.product_id ?? '')?.stock_unit, risk_bucket: category.kind === 'EXPIRED' ? 'EXPIRED' : category.kind === 'SOON' ? `${category.threshold}_DAYS` : category.kind === 'NORMAL' ? 'OK' : 'UNKNOWN' };
+    }));
+    if (data.length < 200) return rows;
+  }
 }
 
 export async function loadExpiryAlerts(organizationId: string, branchId: string): Promise<ExpiryAlert[]> {
-  const { data, error } = await db.from('expiry_alerts').select('*').eq('organization_id', organizationId).eq('branch_id', branchId).neq('status', 'RESOLVED').order('created_at', { ascending: false }).limit(100);
-  if (error) throw error;
-  return data;
+  const rows: ExpiryAlert[] = [];
+  for (let offset = 0; ; offset += 200) {
+    const { data, error } = await db.from('expiry_alerts').select('*').eq('organization_id', organizationId).eq('branch_id', branchId).neq('status', 'RESOLVED').order('created_at', { ascending: false }).order('id').range(offset, offset + 199);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < 200) return rows;
+  }
 }
 
 export async function loadExpiryActions(organizationId: string, branchId: string): Promise<ExpiryAction[]> {
@@ -113,10 +138,11 @@ export async function loadExpiryPolicy(organizationId: string): Promise<ExpiryPo
 }
 
 export async function saveExpiryPolicy(organizationId: string, thresholds: number[]): Promise<ExpiryPolicy> {
-  const cleaned = [...new Set(thresholds.filter((value) => Number.isInteger(value) && value > 0))].sort((a, b) => b - a);
+  const cleaned = expiryThresholds(thresholds.join(','));
   if (!cleaned.length || cleaned.length > 10) throw new Error('INVALID_EXPIRY_THRESHOLDS');
   const { data, error } = await db.from('expiry_policies').upsert({ organization_id: organizationId, thresholds_days: cleaned }, { onConflict: 'organization_id' }).select('*').single();
   if (error) throw error;
+  settingsChanged(organizationId);
   return data;
 }
 
@@ -132,22 +158,22 @@ export async function recordExpiryAction(batchId: string, actionType: 'PRIORITIZ
   return data;
 }
 
-export async function disposeBatch(batchId: string, onHandBefore: number, reason: string): Promise<string> {
+export async function disposeBatch(batchId: string, idempotencyKey: string, reason: string): Promise<string> {
   const { data, error } = await db.rpc('dispose_batch', {
     p_batch_id: batchId,
-    p_reason: reason.trim() || 'Expiry disposal',
-    p_idempotency_key: `dispose:${batchId}:from:${onHandBefore}`,
+    p_reason: reason.trim(),
+    p_idempotency_key: idempotencyKey,
   });
   if (error) throw error;
   return data;
 }
 
-export async function returnBatchToSupplier(batchId: string, onHandBefore: number, quantity: number, reason: string): Promise<string> {
+export async function returnBatchToSupplier(batchId: string, idempotencyKey: string, quantity: number, reason: string): Promise<string> {
   const { data, error } = await db.rpc('return_batch_to_supplier', {
     p_batch_id: batchId,
     p_quantity: quantity,
-    p_reason: reason.trim() || 'Supplier return',
-    p_idempotency_key: `supplier-return:${batchId}:from:${onHandBefore}:qty:${quantity}`,
+    p_reason: reason.trim(),
+    p_idempotency_key: idempotencyKey,
   });
   if (error) throw error;
   return data;

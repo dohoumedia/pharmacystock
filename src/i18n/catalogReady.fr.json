@@ -1,0 +1,21 @@
+{
+  "catalogReady": {
+    "search": "Rechercher tous les produits par nom, SKU, code-barres ou fabricant",
+    "searchBatch": "Rechercher tous les lots par produit, code-barres ou numéro",
+    "selected": "Sélection : {{value}}", "noResults": "Aucun résultat.", "retry": "Réessayer", "previous": "Précédent", "next": "Suivant", "page": "Page {{page}}",
+    "edit": "Modifier le produit", "saved": "Enregistrement effectué.", "restore": "Restaurer", "archived": "Archivé", "includeArchived": "Inclure les produits archivés", "activeOnly": "Produits actifs uniquement", "none": "Aucun",
+    "stockUnit": "Unité de comptage du stock", "packageHint": "Description du conditionnement uniquement ; les quantités comptent l’unité ci-dessous.", "unitHint": "Choisissez ce que représente une unité de stock. Aucune conversion automatique. L’unité ne peut plus changer après un mouvement de stock.",
+    "barcodes": "Codes-barres du produit", "noBarcodes": "Aucun code-barres attribué.", "primary": "Principal", "makePrimary": "Définir comme principal", "remove": "Retirer le code-barres", "addBarcode": "Ajouter le code-barres",
+    "onlineOnly": "Une connexion et des autorisations à jour sont nécessaires pour ces modifications.",
+    "openingStock": "Stock initial", "openingDescription": "Enregistrez le stock déjà détenu par cette succursale. Le lot et le mouvement initial sont créés ensemble. Pour les livraisons fournisseur, utilisez les achats et réceptions.",
+    "postOpening": "Enregistrer le stock initial", "openingInvalid": "Choisissez un produit et renseignez un lot, une péremption valide, une quantité et un prix de vente positifs, un coût facultatif non négatif et un motif.", "openingSaved": "Stock initial enregistré dans le registre des mouvements.", "verifyInventory": "Vérifier le stock", "importStock": "Importer le stock initial", "dateHint": "AAAA-MM-JJ ; la péremption est obligatoire dans le modèle actuel des lots.",
+    "retryOpening": "Cette demande a été conservée avant envoi. Réessayez la même demande pour confirmer son résultat sans doubler le stock. Ses valeurs restent fixes jusqu’à acceptation.", "reviseRequest": "Corriger la demande rejetée",
+    "identityOnly": "Créer l’identité d’un lot n’ajoute aucune quantité. Utilisez Stock initial pour le stock existant ou Achats pour une livraison.",
+    "reprice": "Modifier le prix de vente du lot", "repriceHint": "Le nouveau prix s’applique aux ventes futures. Le coût d’achat historique est conservé. Vérifiez le prix avant confirmation.", "currentPrice": "Prix de vente actuel : {{price}}", "confirmPrice": "Définir le prix de vente du lot {{lot}} à {{price}} ?", "confirmReprice": "Confirmer le prix de vente",
+    "invalidOrder": "Chaque ligne nécessite une quantité positive et, si renseigné, un coût valide non négatif.", "receiptInvalid": "Certaines lignes doivent être corrigées. Aucune réception n’a été envoyée.", "receiptRowInvalid": "Corrigez cette ligne : {{fields}}.",
+    "adjustmentInvalid": "Renseignez une quantité positive et un motif.", "countInvalid": "Chaque comptage renseigné doit être une quantité valide non négative.",
+    "receiptFields": { "quantity": "quantité (positive et inférieure ou égale au reste)", "unitCost": "coût unitaire", "sellingPrice": "prix de vente", "lotNumber": "numéro de lot", "expiryDate": "péremption (AAAA-MM-JJ)" },
+    "errors": { "unitLocked": "L’unité ne peut plus changer après des mouvements de stock.", "batchMismatch": "Ce lot existe avec une péremption, un coût ou un prix de vente différent. Vérifiez sa fiche avant d’enregistrer.", "priceChanged": "Le prix du lot a changé. Sélectionnez de nouveau le lot et vérifiez son prix actuel.", "retryMismatch": "Cette référence a déjà été utilisée avec d’autres valeurs. Vérifiez l’opération existante avant de continuer.", "invalidValues": "Vérifiez quantités, coûts, prix et dates. Les quantités acceptent quatre décimales ; les coûts et prix en acceptent deux." },
+    "units": { "unit": "unité", "tablet": "comprimé", "capsule": "gélule", "bottle": "flacon", "box": "boîte", "ampoule": "ampoule", "tube": "tube", "sachet": "sachet", "ml": "mL", "g": "g" }
+  }
+}

@@ -368,7 +368,7 @@ describe('app-level scheduled POS replay integration', () => {
 
   it('wires POS history to the observer and keeps replay exclusively in the app provider', () => {
     expect(posSource).toContain('observeSyncedSales(offlineStores.outbox, userId, organizationId, branchId');
-    expect(posSource).toContain('isOnline, salesSyncRevision, t]');
+    expect(posSource).toContain('revision={salesSyncRevision}');
     expect(posSource).not.toMatch(/replayPendingSales|SyncCoordinator|OutboxReplayScheduler/);
     expect(providerSource).toContain('expectedOwnerId: context.expectedOwnerId');
     expect(providerSource).toContain('canReplay: context.isCurrent');

@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import { Link, useLocalSearchParams } from 'expo-router';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useTranslation } from '../src/i18n/useTranslation';
 import { formatDateOnly } from '@/utils/dateFormatting';
-import { errorPresentationKey } from '@/utils/errorPresentation';
+import { InventoryWorkbench } from '@/components/InventoryWorkbench';
+import { InventoryMovementInspector } from '@/components/InventoryMovementInspector';
+import { useAuth } from '@/providers/AuthProvider';
+import { inventoryFormScope } from '@/domain/inventoryCompletion';
+import { hasFreshMutationAuthorization } from '@/domain/mutationAuthorization';
+import { searchInventoryStock } from '@/services/catalogReadiness';
+import { stockUnitLabel } from '@/domain/stockUnits';
 import { BatchStatusBadge } from '@/components/BatchStatusBadge';
 import { ReadModelStatus } from '@/components/ReadModelStatus';
 import { Alert, Button, TextField } from '@/components/ui/controls';
@@ -13,25 +19,15 @@ import { batchSafetyStatus, isBatchSellable, sortBalancesForFefoDisplay, type Ba
 import { formatInventoryMovementType } from '@/domain/inventoryMovementPresentation';
 import { LocalStore } from '@/offline/localStore';
 import {
-  cacheBatches,
   cacheInventoryReadModel,
-  cacheProducts,
-  getCachedBatches,
   getCachedInventoryReadModel,
-  getCachedProducts,
   isSnapshotStale,
   OPERATIONAL_READ_MODEL_MAX_AGE_MS,
 } from '@/offline/readModels';
 import { useConnectivity } from '@/providers/ConnectivityProvider';
 import { useOrganization } from '@/providers/OrganizationProvider';
-import { loadBatches, loadProducts, type Batch, type ProductListItem } from '@/services/catalog';
 import {
-  completeStockCount,
-  createStockCount,
-  loadInventoryBalances,
   loadInventoryMovements,
-  postInventoryMovement,
-  upsertStockCountLine,
   type InventoryBalanceItem,
   type InventoryMovement,
 } from '@/services/inventory';
@@ -46,42 +42,39 @@ function SelectableChip({ label, selected, onPress }: { label: string; selected:
 }
 
 export default function InventoryScreen() {
+  const { organization, branch } = useOrganization();
+  const { user } = useAuth();
+  const { search, countId } = useLocalSearchParams<{ search?: string; countId?: string }>();
+  return <InventoryContent key={`${user?.id}:${organization?.id}:${branch?.id}:${search ?? ''}:${countId ?? ''}`} initialSearch={search ?? ''} initialCountId={countId} />;
+}
+function InventoryContent({ initialSearch, initialCountId }: { initialSearch: string; initialCountId?: string }) {
   const { t, i18n } = useTranslation();
   const { width } = useWindowDimensions();
+  const { user } = useAuth();
+  const [pendingBranch, setPendingBranch] = useState<string | null>(null);
   const { isOnline } = useConnectivity();
-  const { organization, branches, branch, setBranchId, can, usingCachedData: usingCachedPermissions } = useOrganization();
+  const { organization, branches, branch, setBranchId, can, usingCachedData: usingCachedPermissions, contextSyncedAt, refresh: refreshOrganization } = useOrganization();
   const organizationId = organization?.id ?? null;
   const branchId = branch?.id ?? null;
   const [balances, setBalances] = useState<InventoryBalanceItem[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
-  const [products, setProducts] = useState<ProductListItem[]>([]);
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState('');
-  const [reason, setReason] = useState('');
-  const [direction, setDirection] = useState<'IN' | 'OUT'>('IN');
-  const [countMode, setCountMode] = useState(false);
-  const [counted, setCounted] = useState<Record<string, string>>({});
-  const [query, setQuery] = useState('');
+  const [stockPage, setStockPage] = useState(0);
+  const [hasMoreStock, setHasMoreStock] = useState(false);
+  const [query, setQuery] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState<(typeof FILTER_STATUSES)[number]>('ALL');
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingCachedData, setUsingCachedData] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const refreshRequest = useRef(0);
 
   const canRead = can('inventory.read');
-  const canAdjust = can('inventory.adjust');
-  const canCount = can('inventory.count');
-  const mutationsAuthorized = isOnline && !usingCachedPermissions;
+  const mutationsAuthorized = hasFreshMutationAuthorization(isOnline, usingCachedPermissions, contextSyncedAt);
   const desktopTable = width >= breakpoints.tablet;
 
   const applyCachedReadModels = useCallback(() => {
     if (!organizationId || !branchId) return false;
     const inventory = getCachedInventoryReadModel(localStore, organizationId, branchId);
-    const cachedBatches = getCachedBatches(localStore, organizationId, branchId);
-    const cachedProducts = getCachedProducts(localStore, organizationId);
     if (inventory) {
       setBalances(inventory.data.balances);
       setMovements(inventory.data.movements);
@@ -93,15 +86,6 @@ export default function InventoryScreen() {
       setSyncedAt(null);
       setUsingCachedData(false);
     }
-    setBatches(cachedBatches?.data ?? []);
-    setProducts(
-      cachedProducts
-        ? cachedProducts.data.map((product) => ({
-            ...product,
-            primaryBarcode: null,
-          }))
-        : [],
-    );
     return Boolean(inventory);
   }, [branchId, organizationId]);
 
@@ -117,26 +101,19 @@ export default function InventoryScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [nextBalances, nextMovements, nextBatches, nextProducts] = await Promise.all([
-        loadInventoryBalances(organizationId, branchId),
+      const [nextBalances, nextMovements] = await Promise.all([
+        searchInventoryStock(organizationId, branchId, query, stockPage),
         loadInventoryMovements(organizationId, branchId, 50),
-        loadBatches(organizationId, branchId),
-        loadProducts(organizationId),
       ]);
       if (requestId !== refreshRequest.current) return;
       const nextSyncedAt = new Date().toISOString();
-      cacheInventoryReadModel(localStore, organizationId, branchId, { balances: nextBalances, movements: nextMovements }, nextSyncedAt);
-      cacheBatches(localStore, organizationId, branchId, nextBatches, nextSyncedAt);
-      cacheProducts(localStore, organizationId, nextProducts, nextSyncedAt);
-      setBalances(nextBalances);
+      cacheInventoryReadModel(localStore, organizationId, branchId, { balances: nextBalances.items, movements: nextMovements }, nextSyncedAt);
+      setBalances(nextBalances.items);
+      setHasMoreStock(nextBalances.hasMore);
       setMovements(nextMovements);
-      setBatches(nextBatches);
-      setProducts(nextProducts);
       setSyncedAt(nextSyncedAt);
       setUsingCachedData(false);
-      setSelectedBatchId((current) =>
-        current && nextBatches.some((item) => item.id === current) ? current : (nextBatches[0]?.id ?? null),
-      );
+
     } catch {
       if (requestId !== refreshRequest.current) return;
       setError(t('production.inventoryView.refreshFailed'));
@@ -144,14 +121,13 @@ export default function InventoryScreen() {
     } finally {
       if (requestId === refreshRequest.current) setLoading(false);
     }
-  }, [applyCachedReadModels, branchId, canRead, isOnline, organizationId, t]);
+  }, [applyCachedReadModels, branchId, canRead, isOnline, organizationId, query, stockPage, t]);
 
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(timer);
   }, [refresh]);
 
-  const productMap = useMemo(() => new Map(products.map((item) => [item.id, item.name])), [products]);
   const visibleBalances = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return sortBalancesForFefoDisplay(
@@ -159,82 +135,12 @@ export default function InventoryScreen() {
         const safety = batchSafetyStatus(item.batch_status, item.expiry_date);
         return (
           (statusFilter === 'ALL' || safety === statusFilter) &&
-          (!needle || item.product_name.toLocaleLowerCase().includes(needle) || item.lot_number.toLocaleLowerCase().includes(needle))
+          (isOnline || !needle || item.product_name.toLocaleLowerCase().includes(needle) || item.lot_number.toLocaleLowerCase().includes(needle))
         );
       }),
     );
-  }, [balances, query, statusFilter]);
+  }, [balances, query, statusFilter, isOnline]);
   const stale = isSnapshotStale(syncedAt ? { data: null, syncedAt } : null, OPERATIONAL_READ_MODEL_MAX_AGE_MS);
-
-  const refreshAfterWrite = async () => {
-    if (!organizationId || !branchId || !mutationsAuthorized) return;
-    const [nextBalances, nextMovements] = await Promise.all([
-      loadInventoryBalances(organizationId, branchId),
-      loadInventoryMovements(organizationId, branchId, 50),
-    ]);
-    const nextSyncedAt = new Date().toISOString();
-    cacheInventoryReadModel(localStore, organizationId, branchId, { balances: nextBalances, movements: nextMovements }, nextSyncedAt);
-    setBalances(nextBalances);
-    setMovements(nextMovements);
-    setSyncedAt(nextSyncedAt);
-    setUsingCachedData(false);
-  };
-
-  const submitAdjustment = async () => {
-    if (!organizationId || !branchId || !selectedBatchId || !mutationsAuthorized) return;
-    const absolute = Math.abs(Number(quantity));
-    if (!Number.isFinite(absolute) || absolute <= 0) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await postInventoryMovement({
-        organizationId,
-        branchId,
-        batchId: selectedBatchId,
-        movementType: direction === 'IN' ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT',
-        quantityDelta: direction === 'IN' ? absolute : -absolute,
-        reason: reason.trim() || undefined,
-      });
-      setQuantity('');
-      setReason('');
-      await refreshAfterWrite();
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : '';
-      setError(message.includes('INSUFFICIENT_STOCK') ? t('inventory.insufficientStock') : t(errorPresentationKey(cause)));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const submitStockCount = async () => {
-    if (!organizationId || !branchId || !mutationsAuthorized) return;
-    const entries = Object.entries(counted).filter(([, value]) => value.trim() !== '');
-    if (!entries.length) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const count = await createStockCount({ organizationId, branchId });
-      for (const [batchId, value] of entries) {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed) && parsed >= 0)
-          await upsertStockCountLine({
-            stockCountId: count.id,
-            organizationId,
-            branchId,
-            batchId,
-            countedQuantity: parsed,
-          });
-      }
-      await completeStockCount(count.id);
-      setCounted({});
-      setCountMode(false);
-      await refreshAfterWrite();
-    } catch (cause) {
-      setError(t(errorPresentationKey(cause)));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (!canRead)
     return (
@@ -264,6 +170,7 @@ export default function InventoryScreen() {
         {!isOnline ? (
           <Alert tone="warning" title={t('production.inventoryView.offlineReadOnly')} />
         ) : null}
+        {isOnline && !mutationsAuthorized ? <Button variant="secondary" label={t('purchaseReady.refreshAccess')} onPress={() => void refreshOrganization()} /> : null}
         {error ? (
           <Alert tone="danger" title={error} />
         ) : null}
@@ -273,22 +180,22 @@ export default function InventoryScreen() {
             <SelectableChip
               key={item.id}
               label={item.name}
-              onPress={() => setBranchId(item.id)}
+              onPress={() => { if (item.id !== branchId) setPendingBranch(item.id); }}
               selected={item.id === branchId}
             />
           ))}
         </View>
 
+        {pendingBranch ? <Surface style={styles.card}><Text>{t('inventoryReady.branchConfirm')}</Text><Button label={t('inventoryReady.confirmBranch')} onPress={() => { setBranchId(pendingBranch); setPendingBranch(null); }} /><Button variant="secondary" label={t('common.cancel')} onPress={() => setPendingBranch(null)} /></Surface> : null}
+        {organizationId && branchId && user ? <InventoryWorkbench initialCountId={initialCountId} scope={inventoryFormScope(user.id, organizationId, branchId)} organizationId={organizationId} branchId={branchId} branchName={branch?.name ?? ''} writable={mutationsAuthorized} online={isOnline} canAdjust={can('inventory.adjust')} canCount={can('inventory.count')} onSaved={refresh} /> : null}
+
         <Surface tone="raised" style={styles.card}>
           <View style={styles.headerRow}>
             <CardTitle>{t('inventory.balances')}</CardTitle>
-            {canCount && mutationsAuthorized ? (
-              <Button label={countMode ? t('common.cancel') : t('inventory.stockCount')} onPress={() => setCountMode((value) => !value)} variant="secondary" />
-            ) : null}
           </View>
           <TextField
             accessibilityLabel={t('production.inventoryView.search')}
-            onChangeText={setQuery}
+            onChangeText={(value) => { setQuery(value); setStockPage(0); }}
             placeholder={t('production.inventoryView.search')}
             style={styles.input}
             value={query}
@@ -310,58 +217,14 @@ export default function InventoryScreen() {
             <SupportingText>{t('production.inventoryView.noFilteredStock')}</SupportingText>
           ) : null}
           {desktopTable && visibleBalances.length > 0 ? (
-            <InventoryTable balances={visibleBalances} countMode={countMode} counted={counted} onCounted={setCounted} />
+            <InventoryTable balances={visibleBalances} />
           ) : (
             visibleBalances.map((item) => (
-              <InventoryCard
-                balance={item}
-                countMode={countMode}
-                counted={counted[item.batch_id] ?? ''}
-                key={item.batch_id}
-                onCounted={(value) =>
-                  setCounted((current) => ({
-                    ...current,
-                    [item.batch_id]: value,
-                  }))
-                }
-              />
+              <InventoryCard balance={item} key={item.batch_id} />
             ))
           )}
-          {countMode ? (
-            <Button disabled={saving} label={saving ? t('common.loading') : t('inventory.reconcile')} loading={saving} onPress={() => void submitStockCount()} />
-          ) : null}
+          <View style={styles.chips}><Button variant="ghost" disabled={!isOnline || loading || stockPage === 0} label={t('catalogReady.previous')} onPress={() => setStockPage((value) => value - 1)} /><Text>{t('catalogReady.page', { page: stockPage + 1 })}</Text><Button variant="ghost" disabled={!isOnline || loading || !hasMoreStock} label={t('catalogReady.next')} onPress={() => setStockPage((value) => value + 1)} /></View>
         </Surface>
-
-        {canAdjust && mutationsAuthorized && branchId && batches.length > 0 ? (
-          <Surface tone="default" style={styles.card}>
-            <CardTitle>{t('inventory.adjustment')}</CardTitle>
-            <Text style={styles.sectionLabel}>{t('catalog.selectProduct')}</Text>
-            <View style={styles.chips}>
-              {batches.slice(0, 60).map((item) => (
-                <SelectableChip
-                  key={item.id}
-                  label={`${productMap.get(item.product_id) ?? item.product_id.slice(0, 8)} · ${item.lot_number}`}
-                  onPress={() => setSelectedBatchId(item.id)}
-                  selected={item.id === selectedBatchId}
-                />
-              ))}
-            </View>
-            <View style={styles.chips}>
-              <SelectableChip label={t('inventory.increase')} onPress={() => setDirection('IN')} selected={direction === 'IN'} />
-              <SelectableChip label={t('inventory.decrease')} onPress={() => setDirection('OUT')} selected={direction === 'OUT'} />
-            </View>
-            <TextField
-              accessibilityLabel={t('inventory.quantity')}
-              keyboardType="decimal-pad"
-              onChangeText={setQuantity}
-              placeholder={t('inventory.quantity')}
-              style={styles.input}
-              value={quantity}
-            />
-            <TextField accessibilityLabel={t('inventory.reason')} onChangeText={setReason} placeholder={t('inventory.reason')} style={styles.input} value={reason} />
-            <Button disabled={saving || !quantity.trim()} label={saving ? t('common.loading') : t('inventory.postAdjustment')} loading={saving} onPress={() => void submitAdjustment()} />
-          </Surface>
-        ) : null}
 
         <Surface tone="default" style={styles.card}>
           <CardTitle>{t('inventory.recentMovements')}</CardTitle>
@@ -372,7 +235,7 @@ export default function InventoryScreen() {
               <Text style={styles.movementType}>{formatInventoryMovementType(movement.movement_type, t)}</Text>
               <Text style={[styles.quantity, movement.quantity_delta < 0 && styles.negative]}>
                 {movement.quantity_delta > 0 ? '+' : ''}
-                {movement.quantity_delta}
+                {new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(Number(movement.quantity_delta))}
               </Text>
               <MetadataText style={styles.movementMeta}>
                 {new Intl.DateTimeFormat(i18n.language, {
@@ -380,6 +243,7 @@ export default function InventoryScreen() {
                   timeStyle: 'short',
                 }).format(new Date(movement.occurred_at))}
               </MetadataText>
+              <InventoryMovementInspector movement={movement} online={isOnline} />
             </View>
           ))}
         </Surface>
@@ -388,13 +252,7 @@ export default function InventoryScreen() {
   );
 }
 
-type CountProps = {
-  countMode: boolean;
-  counted: Record<string, string>;
-  onCounted: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-};
-
-function InventoryTable({ balances, countMode, counted, onCounted }: { balances: InventoryBalanceItem[] } & CountProps) {
+function InventoryTable({ balances }: { balances: InventoryBalanceItem[] }) {
   const { t, i18n } = useTranslation();
   return (
     <View accessibilityRole="list" style={styles.table}>
@@ -411,7 +269,7 @@ function InventoryTable({ balances, countMode, counted, onCounted }: { balances:
         const sellable = isBatchSellable(item.batch_status, item.expiry_date);
         return (
           <View key={item.batch_id} style={styles.tableRow}>
-            <Text style={[styles.productName, styles.productColumn]}>{item.product_name}</Text>
+            <Text style={[styles.productName, styles.productColumn]}>{item.product_name} / {stockUnitLabel(item.stock_unit, t)}</Text>
             <Text style={[styles.meta, styles.lotColumn]}>{item.lot_number}</Text>
             <Text style={[styles.meta, styles.expiryColumn]}>
               {formatDateOnly(item.expiry_date, i18n.language)}
@@ -419,24 +277,11 @@ function InventoryTable({ balances, countMode, counted, onCounted }: { balances:
             <View style={styles.statusColumn}>
               <BatchStatusBadge status={safety} />
             </View>
-            <Text style={[styles.quantity, styles.numberColumn]}>{item.on_hand_quantity}</Text>
+            <Text style={[styles.quantity, styles.numberColumn]}>{new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(Number(item.on_hand_quantity))}</Text>
             <Text style={[styles.quantity, styles.numberColumn, !sellable && styles.unavailable]}>
-              {sellable ? item.available_quantity : t('production.inventoryView.notSellable')}
+              {sellable ? new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(Number(item.available_quantity)) : t('production.inventoryView.notSellable')}
             </Text>
-            {countMode ? (
-              <TextInput
-                keyboardType="decimal-pad"
-                onChangeText={(value) =>
-                  onCounted((current) => ({
-                    ...current,
-                    [item.batch_id]: value,
-                  }))
-                }
-                placeholder={t('inventory.counted')}
-                style={styles.countInput}
-                value={counted[item.batch_id] ?? ''}
-              />
-            ) : null}
+
           </View>
         );
       })}
@@ -444,24 +289,14 @@ function InventoryTable({ balances, countMode, counted, onCounted }: { balances:
   );
 }
 
-function InventoryCard({
-  balance,
-  countMode,
-  counted,
-  onCounted,
-}: {
-  balance: InventoryBalanceItem;
-  countMode: boolean;
-  counted: string;
-  onCounted: (value: string) => void;
-}) {
+function InventoryCard({ balance }: { balance: InventoryBalanceItem }) {
   const { t, i18n } = useTranslation();
   const safety = batchSafetyStatus(balance.batch_status, balance.expiry_date);
   const sellable = isBatchSellable(balance.batch_status, balance.expiry_date);
   return (
     <View accessibilityRole="summary" style={[styles.stockCard, !sellable && styles.stockCardBlocked]}>
       <View style={styles.headerRow}>
-        <Text style={styles.productName}>{balance.product_name}</Text>
+        <Text style={styles.productName}>{balance.product_name} / {stockUnitLabel(balance.stock_unit, t)}</Text>
         <BatchStatusBadge status={safety} />
       </View>
       <Text style={styles.meta}>
@@ -472,26 +307,18 @@ function InventoryCard({
       </Text>
       <View style={styles.metrics}>
         <Text style={styles.metric}>
-          {t('inventory.onHand')}: {balance.on_hand_quantity}
+          {t('inventory.onHand')}: {new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(Number(balance.on_hand_quantity))}
         </Text>
         <Text style={styles.metric}>
-          {t('production.inventoryView.reserved')}: {balance.reserved_quantity}
+          {t('production.inventoryView.reserved')}: {new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(Number(balance.reserved_quantity))}
         </Text>
         <Text style={[styles.metric, !sellable && styles.unavailable]}>
           {sellable
-            ? `${t('production.inventoryView.available')}: ${balance.available_quantity}`
+            ? `${t('production.inventoryView.available')}: ${new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 4 }).format(Number(balance.available_quantity))}`
             : t('production.inventoryView.notSellable')}
         </Text>
       </View>
-      {countMode ? (
-        <TextInput
-          keyboardType="decimal-pad"
-          onChangeText={onCounted}
-          placeholder={t('inventory.counted')}
-          style={styles.countInput}
-          value={counted}
-        />
-      ) : null}
+
     </View>
   );
 }

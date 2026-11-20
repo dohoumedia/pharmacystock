@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadBatchStockBalances, setMissingBatchSellingPrice } from './catalog';
 
 const mocks = vi.hoisted(() => {
   const maybeSingle = vi.fn();
@@ -30,8 +31,6 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/supabase', () => ({ supabase: { from: mocks.from } }));
-
-import { loadBatchStockBalances, setMissingBatchSellingPrice } from './catalog';
 
 describe('setMissingBatchSellingPrice', () => {
   beforeEach(() => {

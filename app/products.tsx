@@ -1,244 +1,96 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'expo-router';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from '../src/i18n/useTranslation';
+import { Alert, Button, FormField, PageHeader, Surface, TextField } from '@/components/ui';
 import { useOrganization } from '@/providers/OrganizationProvider';
+import { useConnectivity } from '@/providers/ConnectivityProvider';
+import { hasFreshMutationAuthorization } from '@/domain/mutationAuthorization';
+import { STOCK_UNITS, stockUnitLabel, type StockUnit } from '@/domain/stockUnits';
 import { errorPresentationKey } from '@/utils/errorPresentation';
-import {
-  archiveProduct,
-  createProduct,
-  loadCategories,
-  loadManufacturers,
-  loadProducts,
-  type Category,
-  type Manufacturer,
-  type ProductListItem,
-} from '@/services/catalog';
+import { loadBarcodes, loadCategories, loadManufacturers, type Barcode, type Category, type Manufacturer, type Product } from '@/services/catalog';
+import { createCatalogProduct, maintainBarcode, searchProducts, setProductArchived, updateProduct } from '@/services/catalogReadiness';
 
+type Fields = { name: string; genericName: string; brandName: string; strength: string; dosageForm: string; packageSize: string; sku: string; stockUnit: StockUnit; categoryId: string | null; manufacturerId: string | null };
+const blank = (): Fields => ({ name: '', genericName: '', brandName: '', strength: '', dosageForm: '', packageSize: '', sku: '', stockUnit: 'unit', categoryId: null, manufacturerId: null });
 export default function ProductsScreen() {
+  const { organization } = useOrganization();
+  return <ProductsContent key={organization?.id} />;
+}
+function ProductsContent() {
   const { t } = useTranslation();
-  const { organization, can } = useOrganization();
-  const [products, setProducts] = useState<ProductListItem[]>([]);
+  const { organization, can, usingCachedData, contextSyncedAt } = useOrganization();
+  const { isOnline } = useConnectivity();
+  const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
-  const [search, setSearch] = useState('');
-  const [name, setName] = useState('');
-  const [genericName, setGenericName] = useState('');
-  const [brandName, setBrandName] = useState('');
-  const [strength, setStrength] = useState('');
-  const [dosageForm, setDosageForm] = useState('');
-  const [packageSize, setPackageSize] = useState('');
-  const [sku, setSku] = useState('');
-  const [barcode, setBarcode] = useState('');
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [manufacturerId, setManufacturerId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const canRead = can('inventory.read');
-  const canCreate = can('inventory.product.create');
-  const canUpdate = can('inventory.product.update');
-
+  const [search, setSearch] = useState(''); const [page, setPage] = useState(0); const [hasMore, setHasMore] = useState(false);
+  const [showArchived, setShowArchived] = useState(false); const [fields, setFields] = useState<Fields>(blank);
+  const [editing, setEditing] = useState<Product | null>(null); const [barcodes, setBarcodes] = useState<Barcode[]>([]); const [barcode, setBarcode] = useState('');
+  const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null); const [message, setMessage] = useState<string | null>(null);
+  const request = useRef(0); const barcodeRequest = useRef(0);
+  const canRead = can('inventory.read'); const writable = hasFreshMutationAuthorization(isOnline, usingCachedData, contextSyncedAt);
+  const canCreate = can('inventory.product.create') && writable; const canUpdate = can('inventory.product.update') && writable;
+  const cancelEdit = () => { ++barcodeRequest.current; setEditing(null); setFields(blank()); setBarcodes([]); setBarcode(''); };
   const refresh = useCallback(async () => {
-    if (!organization || !canRead) return;
-    setLoading(true);
-    setError(null);
+    const generation = ++request.current;
+    if (!organization || !canRead || !isOnline) return;
+    setLoading(true); setError(null);
     try {
-      const [nextProducts, nextCategories, nextManufacturers] = await Promise.all([
-        loadProducts(organization.id, search),
-        loadCategories(organization.id),
-        loadManufacturers(organization.id),
-      ]);
-      setProducts(nextProducts);
-      setCategories(nextCategories);
-      setManufacturers(nextManufacturers);
-      setCategoryId((current) => current && nextCategories.some((item) => item.id === current) ? current : null);
-      setManufacturerId((current) => current && nextManufacturers.some((item) => item.id === current) ? current : null);
-    } catch (cause) {
-      setError(t(errorPresentationKey(cause)));
-    } finally {
-      setLoading(false);
-    }
-  }, [organization, canRead, search]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => void refresh(), 250);
-    return () => clearTimeout(timer);
-  }, [refresh]);
-
-  const submit = async () => {
-    if (!organization || !name.trim()) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await createProduct({
-        organizationId: organization.id,
-        name: name.trim(),
-        genericName,
-        brandName,
-        strength,
-        dosageForm,
-        packageSize,
-        sku,
-        barcode,
-        categoryId,
-        manufacturerId,
-      });
-      setName('');
-      setGenericName('');
-      setBrandName('');
-      setStrength('');
-      setDosageForm('');
-      setPackageSize('');
-      setSku('');
-      setBarcode('');
-      setCategoryId(null);
-      setManufacturerId(null);
-      await refresh();
-    } catch (cause) {
-      setError(t(errorPresentationKey(cause)));
-    } finally {
-      setSaving(false);
-    }
+      const [result, nextCategories, nextManufacturers] = await Promise.all([searchProducts(organization.id, search, page, showArchived ? null : 'active'), loadCategories(organization.id), loadManufacturers(organization.id)]);
+      if (generation !== request.current) return;
+      setProducts(result.items); setHasMore(result.hasMore); setCategories(nextCategories); setManufacturers(nextManufacturers);
+    } catch (cause) { if (generation === request.current) setError(t(errorPresentationKey(cause))); }
+    finally { if (generation === request.current) setLoading(false); }
+  }, [organization, canRead, isOnline, search, page, showArchived, t]);
+  useEffect(() => { const counter = request; const timer = setTimeout(() => void refresh(), 200); return () => { clearTimeout(timer); ++counter.current; }; }, [refresh]);
+  const edit = async (product: Product) => {
+    const generation = ++barcodeRequest.current; setError(null); setEditing(product); setBarcode(''); setBarcodes([]);
+    setFields({ name: product.name, genericName: product.generic_name ?? '', brandName: product.brand_name ?? '', strength: product.strength ?? '', dosageForm: product.dosage_form ?? '', packageSize: product.package_size ?? '', sku: product.sku ?? '', stockUnit: (product.stock_unit ?? 'unit') as StockUnit, categoryId: product.category_id, manufacturerId: product.manufacturer_id });
+    try { const rows = await loadBarcodes(product.id); if (generation === barcodeRequest.current) setBarcodes(rows); }
+    catch (cause) { if (generation === barcodeRequest.current) setError(t(errorPresentationKey(cause))); }
   };
-
-  const archive = async (productId: string) => {
-    setError(null);
-    try {
-      await archiveProduct(productId);
-      await refresh();
-    } catch (cause) {
-      setError(t(errorPresentationKey(cause)));
-    }
+  const mutate = async (action: () => Promise<unknown>) => {
+    if (!writable || saving) return; setSaving(true); setError(null); setMessage(null);
+    try { await action(); setMessage(t('catalogReady.saved')); await refresh(); }
+    catch (cause) { setError(t(errorPresentationKey(cause))); } finally { setSaving(false); }
   };
-
-  const categoryName = (id: string | null) => categories.find((item) => item.id === id)?.name;
-  const manufacturerName = (id: string | null) => manufacturers.find((item) => item.id === id)?.name;
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>{t('catalog.products')}</Text>
-            <Text style={styles.subtitle}>{t('catalog.productsSubtitle')}</Text>
-          </View>
-          <View style={styles.actions}>
-            <Link href="/catalog-settings" asChild>
-              <Pressable style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('catalog.manageClassification')}</Text></Pressable>
-            </Link>
-            <Link href="/batches" asChild>
-              <Pressable style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('catalog.manageBatches')}</Text></Pressable>
-            </Link>
-            <Link href="/" asChild>
-              <Pressable style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{t('organization.back')}</Text></Pressable>
-            </Link>
-          </View>
-        </View>
-
-        {canRead ? <TextInput autoCapitalize="none" onChangeText={setSearch} placeholder={t('catalog.search')} style={styles.input} value={search} /> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {loading ? <Text style={styles.meta}>{t('common.loading')}</Text> : null}
-        {!loading && canRead && products.length === 0 ? <Text style={styles.meta}>{t('catalog.noProducts')}</Text> : null}
-
-        {products.map((product) => (
-          <View style={styles.card} key={product.id}>
-            <View style={styles.productHeader}>
-              <View style={styles.grow}>
-                <Text style={styles.productName}>{product.name}</Text>
-                <Text style={styles.meta}>{[product.generic_name, product.brand_name, product.strength].filter(Boolean).join(' · ')}</Text>
-              </View>
-              {canUpdate ? <Pressable onPress={() => void archive(product.id)} style={styles.dangerButton}><Text style={styles.dangerText}>{t('catalog.archive')}</Text></Pressable> : null}
-            </View>
-            <Text style={styles.meta}>{t('catalog.category')}: {categoryName(product.category_id) || '—'}</Text>
-            <Text style={styles.meta}>{t('catalog.manufacturer')}: {manufacturerName(product.manufacturer_id) || '—'}</Text>
-            <Text style={styles.meta}>{t('catalog.sku')}: {product.sku || '—'}</Text>
-            <Text style={styles.meta}>{t('catalog.barcode')}: {product.primaryBarcode || '—'}</Text>
-            <Text style={styles.meta}>{[product.dosage_form, product.package_size].filter(Boolean).join(' · ')}</Text>
-          </View>
-        ))}
-
-        {canCreate ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t('catalog.addProduct')}</Text>
-            <TextInput value={name} onChangeText={setName} placeholder={t('catalog.name')} style={styles.input} />
-            <TextInput value={genericName} onChangeText={setGenericName} placeholder={t('catalog.genericName')} style={styles.input} />
-            <TextInput value={brandName} onChangeText={setBrandName} placeholder={t('catalog.brandName')} style={styles.input} />
-            <View style={styles.row}>
-              <TextInput value={strength} onChangeText={setStrength} placeholder={t('catalog.strength')} style={[styles.input, styles.grow]} />
-              <TextInput value={dosageForm} onChangeText={setDosageForm} placeholder={t('catalog.dosageForm')} style={[styles.input, styles.grow]} />
-            </View>
-            <View style={styles.row}>
-              <TextInput value={packageSize} onChangeText={setPackageSize} placeholder={t('catalog.packageSize')} style={[styles.input, styles.grow]} />
-              <TextInput value={sku} onChangeText={setSku} placeholder={t('catalog.sku')} style={[styles.input, styles.grow]} />
-            </View>
-            <TextInput value={barcode} onChangeText={setBarcode} placeholder={t('catalog.barcode')} style={styles.input} keyboardType="numeric" />
-
-            {categories.length > 0 ? (
-              <>
-                <Text style={styles.sectionLabel}>{t('catalog.category')}</Text>
-                <View style={styles.chips}>
-                  {categories.map((item) => (
-                    <Pressable key={item.id} onPress={() => setCategoryId(item.id === categoryId ? null : item.id)} style={[styles.chip, item.id === categoryId && styles.chipSelected]}>
-                      <Text style={[styles.chipText, item.id === categoryId && styles.chipTextSelected]}>{item.name}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            ) : null}
-
-            {manufacturers.length > 0 ? (
-              <>
-                <Text style={styles.sectionLabel}>{t('catalog.manufacturer')}</Text>
-                <View style={styles.chips}>
-                  {manufacturers.map((item) => (
-                    <Pressable key={item.id} onPress={() => setManufacturerId(item.id === manufacturerId ? null : item.id)} style={[styles.chip, item.id === manufacturerId && styles.chipSelected]}>
-                      <Text style={[styles.chipText, item.id === manufacturerId && styles.chipTextSelected]}>{item.name}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            ) : null}
-
-            <Pressable disabled={saving || !name.trim()} onPress={() => void submit()} style={[styles.primaryButton, (saving || !name.trim()) && styles.disabled]}>
-              <Text style={styles.primaryButtonText}>{saving ? t('common.loading') : t('common.save')}</Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
-  );
+  const save = () => mutate(async () => {
+    if (!organization) return;
+    if (editing) await updateProduct(editing.id, { organizationId: organization.id, ...fields });
+    else await createCatalogProduct({ organizationId: organization.id, ...fields, barcode });
+    cancelEdit();
+  });
+  const changeBarcode = (action: 'ADD' | 'REMOVE' | 'PRIMARY', id?: string) => mutate(async () => {
+    if (!organization || !editing) return; setBarcodes(await maintainBarcode(organization.id, editing.id, action, barcode, id)); setBarcode('');
+  });
+  const textFields = ['name', 'genericName', 'brandName', 'strength', 'dosageForm', 'packageSize', 'sku'] as const;
+  return <SafeAreaView style={s.safe}><ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
+    <PageHeader title={t('catalog.products')} subtitle={t('catalog.productsSubtitle')} />
+    <View style={s.row}><Link href="/catalog-settings" asChild><Button variant="secondary" label={t('catalog.manageClassification')} /></Link><Link href="/batches" asChild><Button variant="secondary" label={t('catalog.manageBatches')} /></Link><Link href="/opening-stock" asChild><Button label={t('catalogReady.openingStock')} /></Link></View>
+    {!isOnline || usingCachedData ? <Alert tone="warning" title={t('catalogReady.onlineOnly')} /> : null}
+    {error ? <Alert tone="danger" title={error} /> : null}{message ? <Alert tone="success" title={message} /> : null}
+    {canRead ? <><FormField label={t('catalogReady.search')}><TextField accessibilityLabel={t('catalogReady.search')} value={search} onChangeText={(value) => { setSearch(value); setPage(0); }} /></FormField>
+      <Button variant="secondary" label={t(showArchived ? 'catalogReady.activeOnly' : 'catalogReady.includeArchived')} onPress={() => { setShowArchived((value) => !value); setPage(0); }} />
+      {loading ? <Text>{t('common.loading')}</Text> : null}{!loading && !products.length ? <Text>{t('catalog.noProducts')}</Text> : null}
+      {products.map((product) => <Surface key={product.id} style={s.card}><Text style={s.name}>{product.name}</Text><Text>{t('catalog.sku')}: {product.sku ?? '—'}</Text><Text>{t('catalogReady.stockUnit')}: {stockUnitLabel(product.stock_unit, t)}</Text><Text>{t('catalog.packageSize')}: {product.package_size ?? '—'}</Text>
+        <Text>{t('catalog.category')}: {categories.find((item) => item.id === product.category_id)?.name ?? '—'}</Text><Text>{t('catalog.manufacturer')}: {manufacturers.find((item) => item.id === product.manufacturer_id)?.name ?? '—'}</Text>
+        {product.status === 'archived' ? <Text>{t('catalogReady.archived')}</Text> : null}
+        {canUpdate ? <View style={s.row}><Button label={t('catalogReady.edit')} onPress={() => void edit(product)} disabled={saving} /><Button variant="secondary" disabled={saving} label={t(product.status === 'archived' ? 'catalogReady.restore' : 'catalog.archive')} onPress={() => void mutate(() => setProductArchived(organization!.id, product.id, product.status !== 'archived'))} /></View> : null}
+      </Surface>)}
+      <View style={s.row}><Button variant="ghost" label={t('catalogReady.previous')} disabled={page === 0 || loading} onPress={() => setPage((value) => value - 1)} /><Text>{t('catalogReady.page', { page: page + 1 })}</Text><Button variant="ghost" label={t('catalogReady.next')} disabled={!hasMore || loading} onPress={() => setPage((value) => value + 1)} /></View>
+    </> : <Alert tone="warning" title={t('production.inventoryView.cannotRead')} />}
+    {(editing ? canUpdate : canCreate) ? <Surface style={s.card}>
+      <Text style={s.name}>{t(editing ? 'catalogReady.edit' : 'catalog.addProduct')}{editing ? `: ${editing.name}` : ''}</Text>
+      {textFields.map((key) => <FormField key={key} label={t(`catalog.${key}`)} required={key === 'name'} hint={key === 'packageSize' ? t('catalogReady.packageHint') : undefined}><TextField accessibilityLabel={t(`catalog.${key}`)} editable={!saving} value={fields[key]} onChangeText={(value) => setFields((current) => ({ ...current, [key]: value }))} /></FormField>)}
+      <FormField label={t('catalogReady.stockUnit')} hint={t('catalogReady.unitHint')}><View style={s.row}>{STOCK_UNITS.map((unit) => <Button key={unit} label={`${fields.stockUnit === unit ? '✓ ' : ''}${stockUnitLabel(unit, t)}`} variant="secondary" disabled={saving} onPress={() => setFields((current) => ({ ...current, stockUnit: unit }))} />)}</View></FormField>
+      <FormField label={t('catalog.category')}><View style={s.row}><Button variant="ghost" label={t('catalogReady.none')} onPress={() => setFields((current) => ({ ...current, categoryId: null }))} />{categories.map((item) => <Button key={item.id} label={`${fields.categoryId === item.id ? '✓ ' : ''}${item.name}`} variant="secondary" onPress={() => setFields((current) => ({ ...current, categoryId: item.id }))} />)}</View></FormField>
+      <FormField label={t('catalog.manufacturer')}><View style={s.row}><Button variant="ghost" label={t('catalogReady.none')} onPress={() => setFields((current) => ({ ...current, manufacturerId: null }))} />{manufacturers.map((item) => <Button key={item.id} label={`${fields.manufacturerId === item.id ? '✓ ' : ''}${item.name}`} variant="secondary" onPress={() => setFields((current) => ({ ...current, manufacturerId: item.id }))} />)}</View></FormField>
+      <FormField label={t('catalog.barcode')}><TextField accessibilityLabel={t('catalog.barcode')} editable={!saving} value={barcode} onChangeText={setBarcode} autoCapitalize="none" /></FormField>
+      {editing ? <><Text>{t('catalogReady.barcodes')}</Text>{barcodes.length === 0 ? <Text>{t('catalogReady.noBarcodes')}</Text> : null}{barcodes.map((item) => <View key={item.id} style={s.row}><Text>{item.barcode}{item.is_primary ? ` · ${t('catalogReady.primary')}` : ''}</Text>{!item.is_primary ? <Button disabled={saving} variant="secondary" label={t('catalogReady.makePrimary')} onPress={() => void changeBarcode('PRIMARY', item.id)} /> : null}<Button disabled={saving} variant="ghost" label={t('catalogReady.remove')} onPress={() => void changeBarcode('REMOVE', item.id)} /></View>)}<Button disabled={saving || !barcode.trim() || !canCreate} variant="secondary" label={t('catalogReady.addBarcode')} onPress={() => void changeBarcode('ADD')} /></> : null}
+      <View style={s.row}><Button label={t('common.save')} loading={saving} disabled={!fields.name.trim()} onPress={() => void save()} />{editing ? <Button label={t('common.cancel')} disabled={saving} variant="ghost" onPress={cancelEdit} /> : null}</View>
+    </Surface> : null}
+  </ScrollView></SafeAreaView>;
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F6F8FC' },
-  container: { padding: 24, gap: 16, width: '100%', maxWidth: 980, alignSelf: 'center' },
-  headerRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
-  headerText: { flex: 1, minWidth: 260, gap: 4 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  title: { fontSize: 28, fontWeight: '800', color: '#102A5C' },
-  subtitle: { fontSize: 15, color: '#667085' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#102A5C' },
-  sectionLabel: { fontSize: 13, fontWeight: '700', color: '#46536A' },
-  productName: { fontSize: 18, fontWeight: '700', color: '#102A5C' },
-  meta: { color: '#667085', fontSize: 13 },
-  error: { color: '#9F1239', fontSize: 14 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, gap: 10, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, elevation: 1 },
-  productHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  grow: { flex: 1, minWidth: 180 },
-  input: { minHeight: 44, borderWidth: 1, borderColor: '#D0D5DD', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#FFFFFF', color: '#101828' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#D0D5DD', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 12 },
-  chipSelected: { backgroundColor: '#102A5C', borderColor: '#102A5C' },
-  chipText: { color: '#344159', fontSize: 13, fontWeight: '600' },
-  chipTextSelected: { color: '#FFFFFF' },
-  primaryButton: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', borderRadius: 10, backgroundColor: '#102A5C', paddingVertical: 12, paddingHorizontal: 18 },
-  primaryButtonText: { color: '#FFFFFF', fontWeight: '700' },
-  secondaryButton: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#98A2B3', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
-  secondaryButtonText: { color: '#344159', fontWeight: '700' },
-  dangerButton: { borderWidth: 1, borderColor: '#FDA4AF', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
-  dangerText: { color: '#9F1239', fontWeight: '700', fontSize: 12 },
-  disabled: { opacity: 0.45 },
-});
+const s = StyleSheet.create({ safe: { flex: 1 }, container: { width: '100%', maxWidth: 1000, alignSelf: 'center', padding: 16, gap: 16 }, card: { padding: 16, gap: 12 }, row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }, name: { fontSize: 18, fontWeight: '700' } });

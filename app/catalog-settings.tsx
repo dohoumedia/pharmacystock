@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'expo-router';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '../src/i18n/useTranslation';
 import { useOrganization } from '@/providers/OrganizationProvider';
 import { errorPresentationKey } from '@/utils/errorPresentation';
 import {
@@ -38,7 +38,7 @@ export default function CatalogSettingsScreen() {
     } catch (cause) {
       setError(t(errorPresentationKey(cause)));
     }
-  }, [organization, canRead]);
+  }, [organization, canRead, t]);
 
   useEffect(() => {
     const timer = setTimeout(() => void refresh(), 0);

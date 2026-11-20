@@ -1,0 +1,545 @@
+{
+  "format": 1,
+  "baseline_version": "20261118215804",
+  "steps": [
+    {
+      "file": "20260823033000_sprint0_tenancy_foundation.sql",
+      "sha256": "f5f7dc32ef396dd2e4beb18bdd88921b11222c60a2f0c7a5b72c0b82fe6dc144",
+      "requires": []
+    },
+    {
+      "file": "20260823033100_sprint0_permissions_seed.sql",
+      "sha256": "b811feb71469ec833c3cc34b86eef930dd749e2a1e9d3dbfcfe1091ea9968708",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823033200_sprint0_security_hardening.sql",
+      "sha256": "94a474bf24934696c03b9e78c80377be92b91fe0cc89b36f6edfa250f1fc7b47",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823080000_sprint1_rbac_hardening.sql",
+      "sha256": "872717c68de19c921b9148cafe2c8bd629408d481c5b897983f9f73c6c3457d6",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823081000_sprint1_staff_profile_visibility.sql",
+      "sha256": "e3ef87078ea75a0cbedb17e2545691c7434771663390d6fc159bc91a7922bec3",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql"
+      ]
+    },
+    {
+      "file": "20260823082000_sprint1_branch_scope_hardening.sql",
+      "sha256": "735cbb561320aeebc5c08755ca9d91863668821386d34cba95692513e56dde33",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql"
+      ]
+    },
+    {
+      "file": "20260823083000_sprint1_performance_hardening.sql",
+      "sha256": "8ae78ce794d88b79b979d8ba4f0ae48c5a2d53c4d0c6abe9d8c2fd35d6e3c0d2",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql"
+      ]
+    },
+    {
+      "file": "20260823090000_sprint2_products_batches.sql",
+      "sha256": "b0f2ade45a9e55e03fc8f04ba8aa52f8c37f507739908d4f08d295a5834562af",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql"
+      ]
+    },
+    {
+      "file": "20260823083100_sprint3_inventory_ledger.sql",
+      "sha256": "5e6367b7237de98ed8244931f9df7eed4d7edf6e358fc522092c7dca546b5e7a",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823090000_sprint2_products_batches.sql"
+      ]
+    },
+    {
+      "file": "20260823083900_sprint3_inventory_hardening.sql",
+      "sha256": "e9659c0d9f702f64153d68f6857d3b3b4e663e62fac9a193f8755447fbdf17ac",
+      "requires": [
+        "20260823083100_sprint3_inventory_ledger.sql"
+      ]
+    },
+    {
+      "file": "20260823091000_sprint2_catalog_performance_indexes.sql",
+      "sha256": "d9bf1eca63b00d51f2d704c094c39cbeea2f8314dea7c67b840bada41450d9c6",
+      "requires": [
+        "20260823090000_sprint2_products_batches.sql"
+      ]
+    },
+    {
+      "file": "20260823092000_sprint2_product_create_rpc.sql",
+      "sha256": "fe9cd0ef60c249dec6288f55f0b023d307145edf3702a408437625e69e5400cf",
+      "requires": [
+        "20260823090000_sprint2_products_batches.sql"
+      ]
+    },
+    {
+      "file": "20260823110000_sprint4_purchasing_receiving.sql",
+      "sha256": "010d30a8f58b760856d6477a7054eba01714daf02c26d5bc0ba05700c2fae6fb",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql"
+      ]
+    },
+    {
+      "file": "20260823111000_sprint4_receiving_security_hardening.sql",
+      "sha256": "fa6d29e83851910d7e15dd3f0ed41c5420419d6f40bc5a0aec69c449d6249267",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql"
+      ]
+    },
+    {
+      "file": "20260823154306_sprint4_transaction_integrity.sql",
+      "sha256": "93c36811689d55cace89ca489f3ddc92a9935b344bf022d00715c5a8bbc21121",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql"
+      ]
+    },
+    {
+      "file": "20260823155000_sprint4_catalog_audit_trigger_fix.sql",
+      "sha256": "9998a750eeafb4a0806f533df0005448650282bb4d088bf44317b3fa956f7946",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823090000_sprint2_products_batches.sql"
+      ]
+    },
+    {
+      "file": "20260823155500_sprint4_purchasing_grants.sql",
+      "sha256": "4a43216fa19ae927644582d69a65a9e404f90df7ec46b21e03d3ffa928f26ec7",
+      "requires": [
+        "20260823110000_sprint4_purchasing_receiving.sql"
+      ]
+    },
+    {
+      "file": "20260823155700_sprint4_inventory_read_grants_fix.sql",
+      "sha256": "7c430f0c5923fe347584385fc0bda82094c3718823a959200470d50f9ba89fb3",
+      "requires": [
+        "20260823083100_sprint3_inventory_ledger.sql"
+      ]
+    },
+    {
+      "file": "20260823160000_sprint4_permission_helper_fix.sql",
+      "sha256": "077d699f50c829f28f9764104db7a7475f6a5a0652b407d4bb04b640d08dc25a",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql"
+      ]
+    },
+    {
+      "file": "20260823161000_sprint5_expiry_fefo_foundation.sql",
+      "sha256": "272350cd7d3dad8b49d122b30542f31b67667a1daf158d14fc0b2c70cf97d2a1",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql"
+      ]
+    },
+    {
+      "file": "20260823161500_sprint5_expiry_actions.sql",
+      "sha256": "137b8334914dc58084156b0504820ffca634cf8563d2a5d20c3c887815be3139",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823162000_sprint5_inventory_write_grants_fix.sql",
+      "sha256": "f8bb6925e997dea4ba8b80cff013b8505d467ada47286207ca6dfbf6656dbc37",
+      "requires": [
+        "20260823083100_sprint3_inventory_ledger.sql"
+      ]
+    },
+    {
+      "file": "20260823162500_sprint5_inventory_movement_types.sql",
+      "sha256": "abaa0c52882be193e79c632e0f654e673f00890c59606e5fcafc7d7409e18d48",
+      "requires": [
+        "20260823083100_sprint3_inventory_ledger.sql"
+      ]
+    },
+    {
+      "file": "20260823170000_sprint6_pos_sales_foundation.sql",
+      "sha256": "8b1ee3afabd477b4d66d2d952b35c7c0cf894b04b3df9d19a201c99c10c427f2",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823162813_sprint6_pos_security_boundary.sql",
+      "sha256": "81e657aa93a037aebe18c114dc3de05dbcc20a042e407f379574935a5bc7391d",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823163500_sprint6_refunds_and_pricing.sql",
+      "sha256": "ecb89fd844b7c27fed6bc0644c6993dd8ce2ba249cb705608d4f45c1c8946071",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql",
+        "20260823162813_sprint6_pos_security_boundary.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823164500_sprint6_sale_quote.sql",
+      "sha256": "007001ac6deaeba2dddeb71d8dcc1798c180ba797d90ec6142102347280a6263",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823170000_sprint7_core_completion_foundation.sql",
+      "sha256": "24739c18cb0e54e04da0310ac431f8a22f5700b3410b9915ff1abd0d71e8ec76",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823171000_sprint7_import_notifications_customer_sales.sql",
+      "sha256": "ad6200e52e952b672f392665e75288f764f9c8153193db217b63f035af2b3cae",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823155000_sprint4_catalog_audit_trigger_fix.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql",
+        "20260823163500_sprint6_refunds_and_pricing.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql",
+        "20260823170000_sprint7_core_completion_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823171000_sprint8_branch_transfers.sql",
+      "sha256": "8b839cb497e30a96fe71346bb31101785eb37dd469a8e54f7ebb045ecc3b1588",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql"
+      ]
+    },
+    {
+      "file": "20260823171100_sprint7_customer_sale_worker_grant.sql",
+      "sha256": "99153156942710ac6c1a9b14783a907dcb694c7e56469f21172c2fe9020b7a00",
+      "requires": [
+        "20260823171000_sprint7_import_notifications_customer_sales.sql"
+      ]
+    },
+    {
+      "file": "20260823171200_sprint7_performance_hardening.sql",
+      "sha256": "68a885a28dd1595e0f9a68b0c523d08d3ffcca71fbef18f44dff0ebad7523973",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823170000_sprint7_core_completion_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260823174000_sprint8_transfer_rls_hardening.sql",
+      "sha256": "e71eec2feb61cd2972df4d82611ac0960df6297ec958b53535ad88f3afdd303c",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823171000_sprint8_branch_transfers.sql"
+      ]
+    },
+    {
+      "file": "20260823175000_sprint8_transfer_workflow_hardening.sql",
+      "sha256": "1433d57ec59b6bfa3d84db343d95e0b894bf12c45ee8760a768167818a5c2d4a",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823171000_sprint8_branch_transfers.sql"
+      ]
+    },
+    {
+      "file": "20260823181000_sprint8_transfer_performance_hardening.sql",
+      "sha256": "236d10a857fa72c81e1703059fd225ff7b72e8f612a715749fa5129b86487b28",
+      "requires": [
+        "20260823171000_sprint8_branch_transfers.sql"
+      ]
+    },
+    {
+      "file": "20260913234137_batch_selling_price_foundation.sql",
+      "sha256": "069fb02609b5bcfbbce203316b2832a14cb4151e58c981fed52d3b5d083a2e97",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823154306_sprint4_transaction_integrity.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql",
+        "20260823162813_sprint6_pos_security_boundary.sql",
+        "20260823163500_sprint6_refunds_and_pricing.sql",
+        "20260823164500_sprint6_sale_quote.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260920023555_reject_duplicate_purchase_receipt_lines.sql",
+      "sha256": "b108912c52b46c2f4912eaa569ba5ef8ecd79bf7842f9cfbdcda85af10eb1b23",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260913234137_batch_selling_price_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260920035830_add_refund_audit_log.sql",
+      "sha256": "ed3cf880837cba47d74eb6c2eca877eaedc10a2b22e63b60e53d0d0a36ed22a8",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823163500_sprint6_refunds_and_pricing.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260920041952_add_transfer_audit_log.sql",
+      "sha256": "24cf128e78ffe1b39b966f9cc64a9a5ca21d54862e65ed609cf7c45dd7d74500",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823171000_sprint8_branch_transfers.sql",
+        "20260823175000_sprint8_transfer_workflow_hardening.sql"
+      ]
+    },
+    {
+      "file": "20260920043646_add_stock_count_audit_log.sql",
+      "sha256": "8bb2fd69561bfe4ecaa4fbad60805e2b55e0c17a819012e59508114759fbce21",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823083900_sprint3_inventory_hardening.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql"
+      ]
+    },
+    {
+      "file": "20260920045243_add_batch_recall_action.sql",
+      "sha256": "11e614cb5825c9709be82a59c11d24f603092c137eb8889d7a7881d34150ab2f",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql",
+        "20260823161500_sprint5_expiry_actions.sql"
+      ]
+    },
+    {
+      "file": "20260920052736_harden_sales_history_branch_rls.sql",
+      "sha256": "fcb52dbc7cf28ad6adb6c69536ec71023af9b578cc6209527bb7b797e552391f",
+      "requires": [
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql"
+      ]
+    },
+    {
+      "file": "20260920055154_add_operational_report_summaries.sql",
+      "sha256": "02a0d7552287e6783d49e28a36e43d430e7b732f1a3b3ffd407eb5c7227cbda0",
+      "requires": [
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823171000_sprint8_branch_transfers.sql"
+      ]
+    },
+    {
+      "file": "20261118025513_owner_first_use_and_invitations.sql",
+      "sha256": "bb5d5d9d6cfdd0af059e66300c96c61b954010565151e4a6428b8834a1d3588e",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql"
+      ]
+    },
+    {
+      "file": "20261118035150_catalog_opening_stock.sql",
+      "sha256": "911a72d14d7e764794be44b6b1c83b2eb5b8017487ebcb0650c33e4978c0c738",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823155000_sprint4_catalog_audit_trigger_fix.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823170000_sprint7_core_completion_foundation.sql",
+        "20260823171000_sprint7_import_notifications_customer_sales.sql"
+      ]
+    },
+    {
+      "file": "20261118132215_inventory_count_completion_audit_boundary.sql",
+      "sha256": "52ec586754a4f5ac7943474cc6a33ade15aecb3aab1c55d9e958bc3115fe84ae",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823083900_sprint3_inventory_hardening.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260920043646_add_stock_count_audit_log.sql"
+      ]
+    },
+    {
+      "file": "20261118143500_transfer_operational_context.sql",
+      "sha256": "d3f2c90144d75ce40c50a74fbdb915f166619b44e1b643df6f3dd0df0bd4d032",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823171000_sprint8_branch_transfers.sql"
+      ]
+    },
+    {
+      "file": "20261118160000_staff_access_completion.sql",
+      "sha256": "ca1b960a754e85de57e1afc705b2a23ddafb31b838bbc3668f28ffba6df3ec96",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql"
+      ]
+    },
+    {
+      "file": "20261118163907_pos_sales_refunds_completion.sql",
+      "sha256": "77e061439c7f5f270cfac21d19f974f6105710877a06b46df14c922cd564bba6",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql",
+        "20260823171000_sprint7_import_notifications_customer_sales.sql"
+      ]
+    },
+    {
+      "file": "20261118175946_operational_reports_exports.sql",
+      "sha256": "47ee4e4922b7f899f519cf57ec3e13e5c1189df5dc4a79a5f6547fe0196f1757",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql",
+        "20260823170000_sprint7_core_completion_foundation.sql",
+        "20260823171000_sprint8_branch_transfers.sql"
+      ]
+    },
+    {
+      "file": "20261118191935_operational_settings_configuration.sql",
+      "sha256": "9e99be6b563359a4a8910fb62401f5426279c38ce23dba7f4137323c42e3239f",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823170000_sprint6_pos_sales_foundation.sql",
+        "20260823170000_sprint7_core_completion_foundation.sql",
+        "20260823171000_sprint7_import_notifications_customer_sales.sql"
+      ]
+    },
+    {
+      "file": "20261118213000_notifications_operational_followup.sql",
+      "sha256": "03754b9307934312ef2b9c2cc72a57c2b1bc199518cc2c10c9c2043c8cd15cd1",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823161000_sprint5_expiry_fefo_foundation.sql",
+        "20260823170000_sprint7_core_completion_foundation.sql",
+        "20260823171000_sprint8_branch_transfers.sql",
+        "20261118025513_owner_first_use_and_invitations.sql"
+      ]
+    },
+    {
+      "file": "20261118215803_controlled_imports_onboarding.sql",
+      "sha256": "51aaaac982726c71674540136a55a630c9e0fb409002d092e7be75ceef804e27",
+      "requires": [
+        "20260823033000_sprint0_tenancy_foundation.sql",
+        "20260823080000_sprint1_rbac_hardening.sql",
+        "20260823083100_sprint3_inventory_ledger.sql",
+        "20260823090000_sprint2_products_batches.sql",
+        "20260823110000_sprint4_purchasing_receiving.sql",
+        "20260823160000_sprint4_permission_helper_fix.sql",
+        "20260823170000_sprint7_core_completion_foundation.sql",
+        "20261118035150_catalog_opening_stock.sql"
+      ]
+    }
+  ],
+  "source_encoding": "UTF-8, LF newlines; optional BOM ignored"
+}

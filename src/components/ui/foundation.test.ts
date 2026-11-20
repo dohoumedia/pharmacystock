@@ -20,6 +20,13 @@ describe('button and input visual states', () => {
     expect(primary.minHeight).toBe(touchTarget); expect(primary.backgroundColor).not.toBe('#E6FFFB'); expect(primary.borderColor).toBe(border.focus);
   });
   it('makes disabled/loading-compatible button state visibly unavailable', () => { const disabled = buttonVisualStyle('secondary', { disabled: true }); expect(disabled.opacity).toBeLessThan(1); expect(disabled.minHeight).toBe(touchTarget); });
+  it.each(['primary', 'secondary', 'danger', 'ghost'] as const)('clears the %s press transform with a native-safe array on release or disable', (variant) => {
+    expect(buttonVisualStyle(variant, { pressed: true }).transform).toEqual([{ scale: 0.99 }]);
+    for (const state of [{ pressed: false }, { disabled: true }, { focused: true }, { hovered: true }]) {
+      // Native style updates must reset the scale without passing null to processTransform.
+      expect(buttonVisualStyle(variant, state).transform).toEqual([]);
+    }
+  });
   it('makes focus and errors independently visible on text fields', () => { expect(textFieldVisualStyle({ focused: true }).borderColor).toBe(border.focus); expect(textFieldVisualStyle({ error: true }).borderColor).toBe(semantic.danger.foreground); });
 });
 

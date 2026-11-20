@@ -46,7 +46,7 @@ do $$ declare v_first uuid; begin
 end $$;
 select public.record_expiry_action('faaaaaaa-3333-3333-3333-aaaaaaaaaaa1','RELEASE_QUARANTINE','qa');
 select public.record_expiry_action('faaaaaaa-3333-3333-3333-aaaaaaaaaaa2','RECALL','manufacturer recall');
-do $ begin
+do $$ begin
   if (select status from public.batches where id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2') <> 'RECALLED' then raise exception 'EXP-T-008 recalled status failed'; end if;
   if exists(
     select 1 from public.get_fefo_batches(
@@ -56,7 +56,7 @@ do $ begin
     ) where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2'
   ) then raise exception 'EXP-T-009 recalled batch remained FEFO-eligible'; end if;
   if not exists(select 1 from public.expiry_actions where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa2' and action_type='RECALL') then raise exception 'EXP-T-010 recall action missing'; end if;
-end $;
+end $$;
 select public.return_batch_to_supplier('faaaaaaa-3333-3333-3333-aaaaaaaaaaa1',2,'near expiry return','expiry:return:1');
 do $$ begin
   if (select on_hand_quantity from public.inventory_balances where batch_id='faaaaaaa-3333-3333-3333-aaaaaaaaaaa1') <> 3 then raise exception 'EXP-T-011 supplier return balance failed'; end if;

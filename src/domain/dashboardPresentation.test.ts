@@ -6,6 +6,7 @@ import type { StockTransfer } from '../services/transfers';
 const balance = (available: number, status = 'ACTIVE', expiryDate = '2030-01-01') => ({
   batch_id: `batch-${available}-${status}`,
   available_quantity: available,
+  selling_price: 1,
   batch_status: status,
   expiry_date: expiryDate,
 } as InventoryBalanceItem);
@@ -48,4 +49,23 @@ describe('dashboard presentation', () => {
   it('uses the current branch sales row only', () => {
     expect(getTodaysSales([{ organization_id: 'org', branch_id: 'branch', sale_date: '2026-08-27', sale_count: 3, gross_sales: 42 }], '2026-08-27')).toEqual({ saleCount: 3, grossSales: 42 });
   });
+});
+
+it('aggregates all eligible lots of a product before low/out-of-stock headlines', () => {
+  const rows = [{ ...balance(2), batch_id: 'lot-a', product_id: 'same' }, { ...balance(2), batch_id: 'lot-b', product_id: 'same' }, { ...balance(0), product_id: 'same' }];
+  expect(getStockAttention(rows, 3, '2026-11-18')).toEqual({ lowStock: 0, outOfStock: 0, lowStockThreshold: 3 });
+  expect(getStockAttention(rows, 5, '2026-11-18')).toEqual({ lowStock: 1, outOfStock: 0, lowStockThreshold: 5 });
+});
+it('does not make unknown balance information look like a confirmed zero', () => {
+  const rows = [{ ...balance(2), product_id: 'same' }, { ...balance(0), product_id: 'same', available_quantity: null }];
+  expect(getStockAttention(rows as InventoryBalanceItem[], 5, '2026-11-18').lowStock).toBe(0);
+});
+
+it('matches report low-stock semantics by excluding unpriced stock from sellable availability', () => {
+  const rows = [{ ...balance(2), product_id: 'same', selling_price: 10 }, { ...balance(5), product_id: 'same', selling_price: null }];
+  expect(getStockAttention(rows, 3, '2026-11-18').lowStock).toBe(1);
+});
+
+it('does not label positive unpriced inventory as physically out of stock', () => {
+  expect(getStockAttention([{ ...balance(5), selling_price: null }], 10, '2026-11-18')).toEqual({ outOfStock: 0, lowStock: 0, lowStockThreshold: 10 });
 });

@@ -15,13 +15,8 @@ type ConnectivityContextValue = {
 
 const ConnectivityContext = createContext<ConnectivityContextValue | undefined>(undefined);
 
-function initialState(): ConnectivityState {
-  if (Platform.OS === 'web' && typeof navigator !== 'undefined') return navigator.onLine ? 'online' : 'offline';
-  return 'checking';
-}
-
 export function ConnectivityProvider({ children }: PropsWithChildren) {
-  const [state, setState] = useState<ConnectivityState>(initialState);
+  const [state, setState] = useState<ConnectivityState>('checking');
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {

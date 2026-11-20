@@ -91,7 +91,7 @@ begin
   begin
     update public.inventory_movements set reason='mutated' where id=v_id;
     raise exception 'INV-T-004 failed: ledger update was allowed';
-  exception when object_not_in_prerequisite_state then null;
+  exception when insufficient_privilege then null;
   end;
 end $$;
 
@@ -132,12 +132,40 @@ begin
   begin
     perform public.complete_inventory_stock_count(v_count);
     raise exception 'INV-T-008 failed: completed stock count replay was allowed';
-  exception when check_violation then null;
+  -- FOR UPDATE obeys the OPEN-only UPDATE policy, so completed rows are not lockable.
+  exception when no_data_found then
+    if sqlerrm<>'STOCK_COUNT_NOT_FOUND' then raise; end if;
   end;
+  if (select count(*) from public.inventory_movements where reference_type='STOCK_COUNT' and reference_id=v_count::text)<>1
+    or (select on_hand_quantity from public.inventory_balances where batch_id='daaaaaaa-3333-3333-3333-aaaaaaaaaaaa') is distinct from 93::numeric then
+    raise exception 'INV-T-013 failed: completed count retry changed stock or ledger';
+  end if;
   if (select count(*) from public.audit_logs where event_type='inventory.stock_count.completed' and entity_id=v_count::text)<>1 then
     raise exception 'INV-T-009 failed: stock count replay duplicated audit';
   end if;
-end $;
+end $$;
 
 reset role;
+-- The database-owner path must still hit the immutable-ledger trigger.
+-- No grants or policies are changed to reach it.
+do $$
+declare v_id uuid;
+begin
+ select id into strict v_id from public.inventory_movements where idempotency_key='test:receipt:1';
+ begin
+  update public.inventory_movements set reason='mutated' where id=v_id;
+  raise exception 'INV-T-010 failed: privileged ledger update was allowed';
+ exception when object_not_in_prerequisite_state then
+  if sqlerrm<>'INVENTORY_LEDGER_IMMUTABLE' then raise; end if;
+ end;
+ begin
+  delete from public.inventory_movements where id=v_id;
+  raise exception 'INV-T-011 failed: privileged ledger delete was allowed';
+ exception when object_not_in_prerequisite_state then
+  if sqlerrm<>'INVENTORY_LEDGER_IMMUTABLE' then raise; end if;
+ end;
+ if not exists(select 1 from public.inventory_movements where id=v_id and quantity_delta=100 and reason='Opening test stock') then
+  raise exception 'INV-T-012 failed: original ledger entry changed';
+ end if;
+end $$;
 rollback;

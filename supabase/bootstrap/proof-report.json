@@ -1,0 +1,752 @@
+{
+  "status": "CANONICAL BOOTSTRAP PROVEN",
+  "scope": "Fresh isolated databases only; not staging/production or real Auth/PostgREST E2E approval.",
+  "baseline_head": "e3e390c58dcdf9203a67733c00b3ebbfd08b90fd",
+  "baseline_branch": "codex/catalog-opening-stock",
+  "baseline_file_count": 487,
+  "preserved_existing_files": 474,
+  "historical_migration_files": 53,
+  "historical_versions": 51,
+  "historical_migration_raw_bytes_unchanged": true,
+  "application_and_dependency_bytes_unchanged": true,
+  "main_bootstrap_runner_and_manifest_bytes_unchanged": true,
+  "original_reproduction": {
+    "deterministic_schema": true,
+    "runs": [
+      {
+        "run": 1,
+        "image": "postgres@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "bootstrap": true,
+        "suites": [
+          {
+            "suite": "batch_selling_price_foundation.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "business_settings_functional.sql",
+            "passed": false,
+            "error": "ERROR:  FAILED: enabled preference receives future alert\nCONTEXT:  PL/pgSQL function pg_temp_74.settings_assert(boolean,text) line 2 at RAISE\nSQL statement \"SELECT pg_temp.settings_assert(exists(select 1 from public.notifications where recipient_user_id='66000000-0000-0000-0000-000000000001' and payload->>'alert_id'=a::text),'enabled preference receives future alert')\"\nPL/pgSQL function inline_code_block line 8 at PERFORM\n"
+          },
+          {
+            "suite": "catalog_opening_stock_functional.sql",
+            "passed": false,
+            "error": "ERROR:  FAILED: retry does not reimport successful row\nCONTEXT:  PL/pgSQL function catalog_test_assert(boolean,text) line 2 at RAISE\nSQL statement \"SELECT public.catalog_test_assert(imported=0,'retry does not reimport successful row')\"\nPL/pgSQL function inline_code_block line 88 at PERFORM\n"
+          },
+          {
+            "suite": "customer_workflow_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "daily_operations_acceptance.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "expiry_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "imports_onboarding_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "inventory_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "notifications_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "operational_reports_functional.sql",
+            "passed": false,
+            "error": "ERROR:  FAILED: actual expired date wins over stored status\nCONTEXT:  PL/pgSQL function pg_temp_94.report_assert(boolean,text) line 2 at RAISE\nSQL statement \"SELECT pg_temp.report_assert((r->>'total')::int=1 and r#>>'{rows,0,status}'='ACTIVE' and r#>>'{rows,0,risk}'='expired','actual expired date wins over stored status')\"\nPL/pgSQL function inline_code_block line 30 at PERFORM\n"
+          },
+          {
+            "suite": "owner_first_use_functional.sql",
+            "passed": false,
+            "error": "NOTICE:  PASS pharmacy + initial branch + owner context + retry + branch creation + pending invitation\nNOTICE:  PASS verified-email inbox + acceptance + membership + branch + retry\nERROR:  null value in column \"name\" of relation \"suppliers\" violates not-null constraint\nDETAIL:  Failing row contains (69396f89-4e71-4ccc-8fed-c9160d20fb02, 5bcffcd6-bbe3-44bb-863e-30fd8135841f, null, null, null, null, null, active, 2026-11-19 00:37:23.226501+00, 2026-11-19 00:37:23.226501+00).\n"
+          },
+          {
+            "suite": "pos_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "purchasing_readiness_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint1_rbac.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint2_catalog_rls.sql",
+            "passed": false,
+            "error": "ERROR:  invalid input syntax for type uuid: \"daaaaaaa-ma00-0000-0000-000000000001\"\nLINE 3: ('daaaaaaa-ma00-0000-0000-000000000001','daaaaaaa-aaaa-aaaa-...\n         ^\n"
+          },
+          {
+            "suite": "sprint3_inventory.sql",
+            "passed": false,
+            "error": "ERROR:  permission denied for table inventory_movements\nCONTEXT:  SQL statement \"update public.inventory_movements set reason='mutated' where id=v_id\"\nPL/pgSQL function inline_code_block line 6 at SQL statement\n"
+          },
+          {
+            "suite": "sprint4_purchasing.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint5_expiry.sql",
+            "passed": false,
+            "error": "ERROR:  syntax error at or near \"$\"\nLINE 1: do $ begin\n           ^\n"
+          },
+          {
+            "suite": "sprint6_pos_sales.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint6_sales_history_rls.sql",
+            "passed": false,
+            "error": "ERROR:  new row violates row-level security policy for table \"inventory_movements\"\nCONTEXT:  SQL statement \"insert into public.inventory_movements(\n    organization_id,branch_id,batch_id,movement_type,quantity_delta,unit_cost,\n    reference_type,reference_id,idempotency_key,reason,metadata,occurred_at,created_by\n  ) values (\n    p_organization_id,p_branch_id,p_batch_id,p_movement_type,p_quantity_delta,p_unit_cost,\n    p_reference_type,p_reference_id,p_idempotency_key,p_reason,coalesce(p_metadata,'{}'::jsonb),p_occurred_at,(select auth.uid())\n  ) returning id\"\nPL/pgSQL function post_inventory_movement(uuid,uuid,uuid,text,numeric,text,text,text,text,numeric,jsonb,timestamp with time zone) line 6 at SQL statement\n"
+          },
+          {
+            "suite": "sprint7_core_completion.sql",
+            "passed": false,
+            "error": "ERROR:  S7-T-009 expiry notification fanout failed\nCONTEXT:  PL/pgSQL function inline_code_block line 2 at RAISE\n"
+          },
+          {
+            "suite": "sprint8_branch_transfers.sql",
+            "passed": false,
+            "error": "ERROR:  S8-T-012 transfer create audit missing or duplicated\nCONTEXT:  PL/pgSQL function inline_code_block line 5 at RAISE\n"
+          },
+          {
+            "suite": "staff_access_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "tenancy_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "transfer_completion_functional.sql",
+            "passed": true,
+            "error": null
+          }
+        ],
+        "image_id": "sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "schema_sha256": "d88585f0c0e19690c4345bda5f467872f3e9ad6e0abfeb36df7200fda0eded82",
+        "schema_assertions": true,
+        "schema_objects": {
+          "tables": 41,
+          "views": 7,
+          "functions": 129,
+          "indexes": 170,
+          "constraints": 256,
+          "triggers": 39
+        },
+        "generated_baseline_equivalent": true,
+        "real_forward_migration_equivalent": true,
+        "application_smoke": true,
+        "passed": 15,
+        "failed": 10
+      }
+    ]
+  },
+  "failure_classification": {
+    "REAL SCHEMA DEFECT": 0,
+    "OBSOLETE ASSERTION": 3,
+    "FIXTURE/ASSUMPTION DEFECT": 7,
+    "ORDER/STATE DEPENDENCY": 0,
+    "UNKNOWN": 0
+  },
+  "failure_matrix": "docs/CANONICAL_BOOTSTRAP_FAILURES.md",
+  "failure_details": "supabase/bootstrap/assertion-failure-evidence.json",
+  "single_clean_proof": {
+    "deterministic_schema": true,
+    "runs": [
+      {
+        "run": 1,
+        "image": "postgres@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "bootstrap": true,
+        "suites": [
+          {
+            "suite": "batch_selling_price_foundation.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "business_settings_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "catalog_opening_stock_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "customer_workflow_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "daily_operations_acceptance.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "expiry_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "imports_onboarding_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "inventory_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "notifications_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "operational_reports_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "owner_first_use_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "pos_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "purchasing_readiness_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint1_rbac.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint2_catalog_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint3_inventory.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint4_purchasing.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint5_expiry.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint6_pos_sales.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint6_sales_history_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint7_core_completion.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint8_branch_transfers.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "staff_access_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "tenancy_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "transfer_completion_functional.sql",
+            "passed": true,
+            "error": null
+          }
+        ],
+        "image_id": "sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "schema_sha256": "d88585f0c0e19690c4345bda5f467872f3e9ad6e0abfeb36df7200fda0eded82",
+        "schema_assertions": true,
+        "schema_objects": {
+          "tables": 41,
+          "views": 7,
+          "functions": 129,
+          "indexes": 170,
+          "constraints": 256,
+          "triggers": 39
+        },
+        "generated_baseline_equivalent": true,
+        "real_forward_migration_equivalent": true,
+        "application_smoke": true,
+        "passed": 25,
+        "failed": 0
+      }
+    ]
+  },
+  "final_reviewed_repeated_proof": {
+    "deterministic_schema": true,
+    "runs": [
+      {
+        "run": 1,
+        "image": "postgres@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "bootstrap": true,
+        "suites": [
+          {
+            "suite": "batch_selling_price_foundation.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "business_settings_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "catalog_opening_stock_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "customer_workflow_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "daily_operations_acceptance.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "expiry_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "imports_onboarding_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "inventory_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "notifications_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "operational_reports_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "owner_first_use_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "pos_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "purchasing_readiness_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint1_rbac.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint2_catalog_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint3_inventory.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint4_purchasing.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint5_expiry.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint6_pos_sales.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint6_sales_history_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint7_core_completion.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint8_branch_transfers.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "staff_access_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "tenancy_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "transfer_completion_functional.sql",
+            "passed": true,
+            "error": null
+          }
+        ],
+        "image_id": "sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "schema_sha256": "d88585f0c0e19690c4345bda5f467872f3e9ad6e0abfeb36df7200fda0eded82",
+        "schema_assertions": true,
+        "schema_objects": {
+          "tables": 41,
+          "views": 7,
+          "functions": 129,
+          "indexes": 170,
+          "constraints": 256,
+          "triggers": 39
+        },
+        "generated_baseline_equivalent": true,
+        "real_forward_migration_equivalent": true,
+        "application_smoke": true,
+        "passed": 25,
+        "failed": 0
+      },
+      {
+        "run": 2,
+        "image": "postgres@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "bootstrap": true,
+        "suites": [
+          {
+            "suite": "batch_selling_price_foundation.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "business_settings_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "catalog_opening_stock_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "customer_workflow_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "daily_operations_acceptance.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "expiry_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "imports_onboarding_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "inventory_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "notifications_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "operational_reports_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "owner_first_use_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "pos_completion_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "purchasing_readiness_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint1_rbac.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint2_catalog_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint3_inventory.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint4_purchasing.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint5_expiry.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint6_pos_sales.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint6_sales_history_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint7_core_completion.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "sprint8_branch_transfers.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "staff_access_functional.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "tenancy_rls.sql",
+            "passed": true,
+            "error": null
+          },
+          {
+            "suite": "transfer_completion_functional.sql",
+            "passed": true,
+            "error": null
+          }
+        ],
+        "image_id": "sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7",
+        "schema_sha256": "d88585f0c0e19690c4345bda5f467872f3e9ad6e0abfeb36df7200fda0eded82",
+        "schema_assertions": true,
+        "schema_objects": {
+          "tables": 41,
+          "views": 7,
+          "functions": 129,
+          "indexes": 170,
+          "constraints": 256,
+          "triggers": 39
+        },
+        "generated_baseline_equivalent": true,
+        "real_forward_migration_equivalent": true,
+        "application_smoke": true,
+        "passed": 25,
+        "failed": 0
+      }
+    ]
+  },
+  "final_suite_sha256": {
+    "batch_selling_price_foundation.sql": "b815841c3c4d9b92c6812f7a7caa1e50afa4ffb1f9267bb9683d1e7338d84032",
+    "business_settings_functional.sql": "ad890cb1a00d88507e018b1d89eefd6aff21143723bba90acab0fa359f8c5044",
+    "catalog_opening_stock_functional.sql": "d2835e38167e5422be96163d59fa213b3ef008b311459655df17f0feff7aa6fd",
+    "customer_workflow_functional.sql": "c24af6be3debb98068af0e580e6be924b86880949e49f1de6f55ea9459c194ce",
+    "daily_operations_acceptance.sql": "724900667ed4475987cbe98f1f00fe51efe059cb72e1151d90b0ec19712db727",
+    "expiry_completion_functional.sql": "e91e075eea321cbf90cded5eda902564724ce38024e5906397ce0e4347be000a",
+    "imports_onboarding_functional.sql": "e8d11960e82a7dd5298a6bba1a4322220040c9d8c9b1806825990f76b9b3d1a2",
+    "inventory_completion_functional.sql": "928c068d4e3e42c57c633cbfad7582ccd5a28b335894d67a69d930d4d291d279",
+    "notifications_functional.sql": "3da1afaf5475b47bced88395aae9a2e1b7fdf9f679c9bd30b52eefc836a6048a",
+    "operational_reports_functional.sql": "39cc26f952f7d059b2afea12546e01ccfc29bb540dd7b6c875e6f7f50413a1f9",
+    "owner_first_use_functional.sql": "36119f7b37aa170311079a01a31d5df40f19fb7066e5d76db66e6c9b81369847",
+    "pos_completion_functional.sql": "56af2679e7a13691de3779064db6f02da57a3159ca55a3b65e3eb049ea3b19be",
+    "purchasing_readiness_functional.sql": "265cbf339013cb25d513d2a07ed4a24c9e113c7562bac23c49ec966e7be8f401",
+    "sprint1_rbac.sql": "50ba76a510532efcd484628418200239a9ed0e2eb5c09afb6d989f2b0a35fcd0",
+    "sprint2_catalog_rls.sql": "1e3c2ddc2b5d1c74a7fdd4eb0c20691105fca6ab269144412dee2f29dd3c980f",
+    "sprint3_inventory.sql": "3248c576905d2f80723c5c810c7653a8e64aaa41599dc7fb5b9fafb47b8f3375",
+    "sprint4_purchasing.sql": "63cd2bc841cd9974cf3ab3745c7b0d5be94bf15d876b168c777563fa7a1b5873",
+    "sprint5_expiry.sql": "91862e66951661cf39d608bda717fe2e74197f731b2992283554c24b59edfcd6",
+    "sprint6_pos_sales.sql": "0cf45ac3b90e8c011ba003604b89398067f24576950431140e51ad96dd08b03c",
+    "sprint6_sales_history_rls.sql": "7340035c5b38f1677e516ac193ac125a4e42c6e7482671a1c5d2d1f60af8db56",
+    "sprint7_core_completion.sql": "cbd7c0819ffc7ab26b9a78e643bdb5202f1b1e0c787b63843e33282d3e6a7eed",
+    "sprint8_branch_transfers.sql": "df8753846c562d18fd286ab9db8c1bf5620f268858fe134d3fb342a9dc884613",
+    "staff_access_functional.sql": "bb23277ea0ccfaa6f70024fffa08d69dda5aea099c59fb6904c365e810abe677",
+    "tenancy_rls.sql": "311fb61bf64638313c50f8ce7a23cd62f2a668745a98e4d34b3a56d903a63d72",
+    "transfer_completion_functional.sql": "bba52462836410529c1f6a3722d33aa4f9db63e603f7ddfe7a8bbd270f92361f"
+  },
+  "cli_proof": {
+    "cli_version": "2.117.0",
+    "baseline_history": "[{\"version\":\"20261118215804\",\"name\":\"canonical_bootstrap\"}]\n",
+    "baseline_history_unchanged": true,
+    "forward_history": "[{\"version\":\"20261118213001\",\"name\":\"canonical_bootstrap\"}, {\"version\":\"20261118215803\",\"name\":\"controlled_imports_onboarding\"}]\n",
+    "forward_schema_equivalent": true,
+    "duplicate_rejected_by_cli": true,
+    "duplicate_history": "[{\"version\":\"20260823170000\",\"name\":\"sprint6_pos_sales_foundation\"}]\n",
+    "full_baseline_forward_history": "[{\"version\":\"20261118215804\",\"name\":\"canonical_bootstrap\"}, {\"version\":\"20261119004944\",\"name\":\"canonical_forward_probe\"}]\n",
+    "full_baseline_forward_version": "20261119004944",
+    "full_baseline_forward_executed": true,
+    "full_baseline_forward_noop": true
+  },
+  "application_compatibility": {
+    "rpc_smoke_checks": 13,
+    "daily_operations_acceptance": true,
+    "representative_domains": [
+      "owner setup",
+      "catalog/product",
+      "barcode",
+      "opening stock",
+      "purchasing",
+      "receiving",
+      "inventory",
+      "count reconciliation",
+      "transfer",
+      "POS quote",
+      "sale/refund",
+      "customer",
+      "reports"
+    ],
+    "application_test_files_passed": 109,
+    "application_tests_passed": 2051,
+    "typecheck_passed": true,
+    "browser_native_real_auth_postgrest_e2e_claimed": false
+  },
+  "state_isolation": "Every suite receives a distinct database cloned from complete canonical clean schema. Explicit shared DML/helper prerequisites are unchanged. No cross-suite dependency found.",
+  "production_accessed": false,
+  "staging_created": false,
+  "deployed": false,
+  "committed_pushed_merged": false,
+  "production_compatibility": {
+    "history_changes_required": false,
+    "historical_replay_required": false,
+    "corrective_bootstrap_sql_required": false,
+    "fresh_environments_and_ordinary_future_forward_only": true
+  },
+  "self_review": {
+    "assertions_removed_or_skipped": false,
+    "coverage_weakened": false,
+    "all_six_transfer_raw_audit_checks_preserved": true,
+    "authenticated_inventory_denial_and_privileged_immutable_trigger_both_checked": true,
+    "count_retry_unchanged_ledger_balance_and_audit_checked": true,
+    "incidental_fixture_accent_encoding_restored": true,
+    "final_two_clean_runs_after_sql_corrections": true,
+    "no_hosted_target_or_project_link_in_proof_exports": true,
+    "full_baseline_forward_probe_local_only": true
+  },
+  "files_changed": [
+    "docs/CANONICAL_BOOTSTRAP.md",
+    "scripts/canonical-cli-proof.py",
+    "supabase/bootstrap/proof-report.json",
+    "supabase/tests/business_settings_functional.sql",
+    "supabase/tests/catalog_opening_stock_functional.sql",
+    "supabase/tests/operational_reports_functional.sql",
+    "supabase/tests/owner_first_use_functional.sql",
+    "supabase/tests/sprint2_catalog_rls.sql",
+    "supabase/tests/sprint3_inventory.sql",
+    "supabase/tests/sprint5_expiry.sql",
+    "supabase/tests/sprint6_sales_history_rls.sql",
+    "supabase/tests/sprint7_core_completion.sql",
+    "supabase/tests/sprint8_branch_transfers.sql"
+  ],
+  "files_added": [
+    "docs/CANONICAL_BOOTSTRAP_FAILURES.md",
+    "supabase/bootstrap/assertion-failure-evidence.json"
+  ],
+  "evidence_paths": [
+    ".expo/bootstrap-resolution-baseline.json",
+    ".expo/canonical-bootstrap-evidence/assertion-original",
+    ".expo/canonical-bootstrap-evidence/assertion-original-sources",
+    ".expo/canonical-bootstrap-evidence/assertion-diagnostics",
+    ".expo/canonical-bootstrap-evidence/assertion-corrected",
+    ".expo/canonical-bootstrap-evidence/assertion-final-single",
+    ".expo/canonical-bootstrap-evidence/assertion-final-repeat",
+    ".expo/canonical-bootstrap-evidence/assertion-reviewed-repeat",
+    ".expo/canonical-bootstrap-evidence/cli-dcad311b26",
+    ".expo/canonical-bootstrap-evidence/application-tests.log",
+    ".expo/canonical-bootstrap-evidence/typecheck.log"
+  ],
+  "remaining_blockers": [],
+  "outside_this_proof": [
+    "Real Supabase platform/Auth/PostgREST and browser/native E2E execution",
+    "Any staging creation, production migration-history reconciliation or deployment"
+  ],
+  "exact_next_action": "Review the local diff and proof artifacts. Stop; staging or production requires a separately authorized workstream."
+}

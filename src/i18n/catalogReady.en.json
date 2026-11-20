@@ -1,0 +1,21 @@
+{
+  "catalogReady": {
+    "search": "Search all products by name, SKU, barcode or manufacturer",
+    "searchBatch": "Search all batches by product, barcode or lot",
+    "selected": "Selected: {{value}}", "noResults": "No matching records.", "retry": "Retry", "previous": "Previous", "next": "Next", "page": "Page {{page}}",
+    "edit": "Edit product", "saved": "Saved successfully.", "restore": "Restore", "archived": "Archived", "includeArchived": "Include archived products", "activeOnly": "Active products only", "none": "None",
+    "stockUnit": "Stock-counting unit", "packageHint": "Package description only; quantities count the stock unit below.", "unitHint": "Choose what one inventory unit means. No automatic pack conversion. The unit cannot change after stock movements exist.",
+    "barcodes": "Product barcodes", "noBarcodes": "No barcode assigned.", "primary": "Primary", "makePrimary": "Make primary", "remove": "Remove barcode", "addBarcode": "Add barcode",
+    "onlineOnly": "An online connection and current permissions are required for these changes.",
+    "openingStock": "Opening stock", "openingDescription": "Record inventory already held by this branch. Creates a batch and an opening ledger movement together. For supplier deliveries, use Purchasing and receiving.",
+    "postOpening": "Post opening stock", "openingInvalid": "Choose a product and enter a lot, valid expiry date, positive quantity and selling price, optional nonnegative cost, and reason.", "openingSaved": "Opening stock posted to the inventory ledger.", "verifyInventory": "Verify inventory", "importStock": "Import opening stock", "dateHint": "YYYY-MM-DD; expiry is required by the current batch model.",
+    "retryOpening": "This request was saved before submission. Retry the same request to confirm its result without duplicating stock. Its values remain fixed until accepted.", "reviseRequest": "Correct the rejected request",
+    "identityOnly": "Creating a batch identity adds no inventory. Use Opening stock to enter existing quantities, or Purchasing to receive a delivery.",
+    "reprice": "Change batch selling price", "repriceHint": "Selling price changes apply to future sales. Historical purchase cost remains unchanged. Review the new price before confirming.", "currentPrice": "Current selling price: {{price}}", "confirmPrice": "Set lot {{lot}} selling price to {{price}}?", "confirmReprice": "Confirm selling price",
+    "invalidOrder": "Every order line needs a positive quantity and a valid nonnegative cost, if supplied.", "receiptInvalid": "Some receipt rows need correction. No receipt has been submitted.", "receiptRowInvalid": "Correct this row: {{fields}}.",
+    "adjustmentInvalid": "Enter a positive quantity and a reason.", "countInvalid": "Every entered count must be a valid nonnegative quantity.",
+    "receiptFields": { "quantity": "quantity (positive and within remaining order)", "unitCost": "unit cost", "sellingPrice": "selling price", "lotNumber": "lot number", "expiryDate": "expiry date (YYYY-MM-DD)" },
+    "errors": { "unitLocked": "The stock unit cannot change after inventory movements exist.", "batchMismatch": "This lot already exists with different expiry, cost or selling price. Review its batch record before posting.", "priceChanged": "The batch price changed since you selected it. Select the batch again and review the current price.", "retryMismatch": "This request reference was already used with different values. Review the existing operation before continuing.", "invalidValues": "Check the quantities, costs, prices and dates. Quantities allow up to four decimal places; prices and costs allow two." },
+    "units": { "unit": "unit", "tablet": "tablet", "capsule": "capsule", "bottle": "bottle", "box": "box", "ampoule": "ampoule", "tube": "tube", "sachet": "sachet", "ml": "mL", "g": "g" }
+  }
+}

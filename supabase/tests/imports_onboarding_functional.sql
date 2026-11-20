@@ -1,0 +1,86 @@
+-- Ordinary onboarding functional assertions only; isolated fixture, no hosted target.
+begin;
+insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values('abf00000-0000-0000-0000-000000000001','imports-owner@example.invalid',now(),'{}');
+insert into public.organizations(id,name,slug,currency_code,timezone,default_locale) values('abf00000-0000-0000-0000-000000000002','Imports Fixture','imports-fixture','CAD','UTC','fr');
+insert into public.branches(id,organization_id,name) values('abf00000-0000-0000-0000-000000000003','abf00000-0000-0000-0000-000000000002','Main');
+insert into public.organization_memberships(id,organization_id,user_id,role_id,status) select 'abf00000-0000-0000-0000-000000000004','abf00000-0000-0000-0000-000000000002','abf00000-0000-0000-0000-000000000001',id,'active' from public.roles where organization_id is null and code='OWNER';
+insert into public.branch_memberships(branch_id,organization_membership_id) values('abf00000-0000-0000-0000-000000000003','abf00000-0000-0000-0000-000000000004');
+create function public.import_test_assert(v boolean,label text) returns void language plpgsql as $$ begin if v is distinct from true then raise exception 'FAILED: %',label; end if; end $$;
+grant execute on function public.import_test_assert(boolean,text) to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','abf00000-0000-0000-0000-000000000001',true);
+do $$
+declare org constant uuid:='abf00000-0000-0000-0000-000000000002'; branch constant uuid:='abf00000-0000-0000-0000-000000000003';
+ job uuid:=gen_random_uuid(); stockjob uuid:=gen_random_uuid(); supplierjob uuid:=gen_random_uuid(); customerjob uuid:=gen_random_uuid();
+ product uuid; batch uuid; payload jsonb; stock jsonb; contacts jsonb; result jsonb; before_count integer; saved_version text;
+begin
+ payload:='[{"row_number":2,"raw_data":{"Nom":"Été, \"Démo\"","Référence":"IMP-1","EAN":"000987"},"normalized_data":{"name":"Été, \"Démo\"","sku":"IMP-1","barcode":"000987","stock_unit":"tablet","package_size":"Box of 20"}}]';
+ result:=public.preview_import_rows(org,branch,'PRODUCTS',payload);
+ perform public.import_test_assert(result->0->'issues'='[]','valid mapped preview');
+ perform public.stage_import_job(job,org,branch,'PRODUCTS','products.csv',payload);
+ perform public.stage_import_job(job,org,branch,'PRODUCTS','products.csv',payload);
+ perform public.import_test_assert((select count(*)=1 from public.import_jobs where id=job),'dropped staging response exact retry');
+ perform public.import_test_assert((select count(*)=1 from public.import_rows where import_job_id=job),'atomic row stage retry');
+ perform public.import_test_assert(not exists(select 1 from public.products where organization_id=org and sku='IMP-1'),'staging has no catalog mutation');
+ begin
+   perform public.stage_import_job(job,org,branch,'PRODUCTS','changed.csv',payload); raise exception 'Expected mismatch';
+ exception when others then if sqlerrm<>'IDEMPOTENCY_PAYLOAD_MISMATCH' then raise; end if; end;
+ perform public.import_test_assert(public.commit_import_job(job)=1,'product imported');
+ perform public.import_test_assert(public.commit_import_job(job)=1,'commit retry cumulative result');
+ select id into product from public.products where organization_id=org and sku='IMP-1';
+ perform public.import_test_assert((select count(*)=1 from public.products where organization_id=org and sku='IMP-1'),'no duplicate products');
+ perform public.import_test_assert(exists(select 1 from public.product_barcodes where product_id=product and barcode='000987'),'barcode usable by downstream catalog/POS');
+ perform public.import_test_assert(exists(select 1 from public.search_catalog_products(org,'000987','active') where id=product),'imported product searchable by barcode');
+ result:=public.preview_import_rows(org,branch,'PRODUCTS',payload);
+ perform public.import_test_assert(result->0->'issues' @> '[{"code":"IMPORT_EXISTING"}]','existing identity visible before commit');
+ stock:='[{"row_number":2,"raw_data":{"sku":"IMP-1","lot_number":"IMP-LOT","quantity":"4","expiry_date":"2030-12-31","purchase_cost":"1.20","selling_price":"2.50","stock_unit":"tablet"},"normalized_data":{"sku":"IMP-1","lot_number":"IMP-LOT","quantity":"4","expiry_date":"2030-12-31","purchase_cost":"1.20","selling_price":"2.50","stock_unit":"tablet","reason":"OPENING_STOCK_IMPORT"}}]';
+ perform public.import_test_assert(public.preview_import_rows(org,branch,'OPENING_STOCK',stock)->0->'issues'='[]','opening preview before posting');
+ perform public.stage_import_job(stockjob,org,branch,'OPENING_STOCK','stock.csv',stock);
+ perform public.import_test_assert(public.commit_import_job(stockjob)=1,'opening import accepted');
+ perform public.stage_import_job(stockjob,org,branch,'OPENING_STOCK','stock.csv',stock);
+ perform public.import_test_assert(public.commit_import_job(stockjob)=1,'opening exact retry after accepted response lost');
+ select id into batch from public.batches where organization_id=org and product_id=product and lot_number='IMP-LOT';
+ perform public.import_test_assert((select count(*)=1 from public.inventory_movements where organization_id=org and batch_id=batch),'normal ledger exactly once');
+ perform public.import_test_assert((select on_hand_quantity=4 and available_quantity=4 from public.inventory_balances where batch_id=batch),'derived stock downstream');
+ perform public.import_test_assert((select purchase_cost=1.20 and selling_price=2.50 from public.batches where id=batch),'cost and selling price distinct');
+ perform public.import_test_assert(exists(select 1 from public.quote_sale(org,branch,jsonb_build_array(jsonb_build_object('product_id',product,'quantity',1)))),'imported stock usable by POS quote');
+ result:=public.read_operational_report(org,branch,'inventory',current_date,current_date);
+ perform public.import_test_assert((result->'summary'->>'cost_value')::numeric=4.8,'imported stock report value');
+ stockjob:=gen_random_uuid();
+ stock:=stock||jsonb_build_array(jsonb_build_object('row_number',3,'raw_data',jsonb_build_object('barcode','000987'),'normalized_data',((stock->0->'normalized_data')-'sku')||'{"barcode":"000987"}'));
+ perform public.stage_import_job(stockjob,org,branch,'OPENING_STOCK','alias-duplicates.csv',stock);
+ perform public.import_test_assert(public.commit_import_job(stockjob)=1,'duplicate resolved lot accepts first only');
+ perform public.import_test_assert((select status='FAILED' and invalid_rows=1 from public.import_jobs where id=stockjob),'duplicate alias lot preserved as row failure');
+ perform public.import_test_assert((select on_hand_quantity=8 from public.inventory_balances where batch_id=batch),'duplicate alias never posts a second movement');
+ result:=public.check_import_row(org,branch,'OPENING_STOCK',stock->0->'normalized_data'||'{"branch_id":"wrong"}');
+ perform public.import_test_assert(result @> '[{"code":"IMPORT_BRANCH"}]','explicit wrong branch');
+ perform public.import_test_assert(public.check_import_row(org,branch,'OPENING_STOCK',stock->0->'normalized_data'||'{"stock_unit":"box"}') @> '[{"code":"IMPORT_STOCK_UNIT_MATCH"}]','stock unit is not silently converted');
+ perform public.import_test_assert(public.check_import_row(org,branch,'OPENING_STOCK',stock->0->'normalized_data'||'{"expiry_date":"2028-02-30"}') @> '[{"code":"IMPORT_EXPIRY"}]','invalid real date');
+ perform public.import_test_assert(public.check_import_row(org,branch,'OPENING_STOCK',stock->0->'normalized_data'||'{"selling_price":"2.501"}') @> '[{"code":"IMPORT_MONEY_PRECISION"}]','price precision');
+ contacts:='[{"row_number":2,"raw_data":{"name":"Supplier, SARL","phone":"15555550101"},"normalized_data":{"name":"Supplier, SARL","phone":"15555550101","code":"IMP-SUP"}},{"row_number":3,"raw_data":{"name":"Supplier, SARL","phone":"15555550102"},"normalized_data":{"name":"Supplier, SARL","phone":"15555550102"}}]';
+ perform public.stage_import_job(supplierjob,org,branch,'SUPPLIERS','suppliers.csv',contacts);
+ perform public.import_test_assert(public.commit_import_job(supplierjob)=1,'partial supplier import is explicit');
+ perform public.import_test_assert((select status='FAILED' and valid_rows=1 and invalid_rows=1 and total_rows=2 from public.import_jobs where id=supplierjob),'partial history counts');
+ perform public.import_test_assert((select phone='15555550101' from public.suppliers where organization_id=org and name='Supplier, SARL'),'same-name supplier never overwritten');
+ select ctid::text into saved_version from public.import_jobs where id=supplierjob;
+ perform public.import_test_assert(public.commit_import_job(supplierjob)=1,'failed job retry preserves accepted row');
+ perform public.import_test_assert((select ctid::text=saved_version from public.import_jobs where id=supplierjob),'terminal partial retry does not rewrite job or repeat audit transitions');
+ contacts:='[{"row_number":2,"raw_data":{"name":"Client Démo"},"normalized_data":{"name":"Client Démo","phone":"+15555550103","email":"customer@example.invalid","locale":"fr","status":"active"}}]';
+ perform public.stage_import_job(customerjob,org,branch,'CUSTOMERS','customers.csv',contacts);
+ perform public.import_test_assert(public.commit_import_job(customerjob)=1,'customer minimum import');
+ perform public.import_test_assert(exists(select 1 from public.customers where organization_id=org and full_name='Client Démo' and preferred_locale='fr' and status='active' and not marketing_consent),'customer downstream and consent unchanged');
+ perform public.import_test_assert(public.check_import_row(org,branch,'CUSTOMERS','{"name":"Other","phone":"1 (555) 555-0103"}') @> '[{"code":"IMPORT_EXISTING"}]','formatted phone conflict');
+ perform public.import_test_assert(public.check_import_row(org,branch,'CUSTOMERS','{"name":"Client Démo"}') @> '[{"code":"IMPORT_NAME_WARNING","severity":"warning"}]','name-only customer warning, no identity merge');
+ -- Failure after the first staged row must roll back the entire new staging request.
+ job:=gen_random_uuid();
+ begin
+   perform public.stage_import_job(job,org,branch,'PRODUCTS','bad.csv','[{"row_number":2,"raw_data":{"name":"First"},"normalized_data":{"name":"First"}},{"row_number":2,"raw_data":{"name":"Second"},"normalized_data":{"name":"Second"}}]'); raise exception 'Expected duplicate row';
+ exception when unique_violation then null; end;
+ perform public.import_test_assert(not exists(select 1 from public.import_jobs where id=job),'atomic staging failure leaves no draft');
+ select count(*) into before_count from public.import_jobs;
+ begin
+   perform public.preview_import_rows(org,branch,'PRODUCTS',(select jsonb_agg(jsonb_build_object('row_number',n+1,'normalized_data',jsonb_build_object('name','x'))) from generate_series(1,501)n)); raise exception 'Expected limit';
+ exception when others then if sqlerrm<>'IMPORT_LIMIT' then raise; end if; end;
+ perform public.import_test_assert((select count(*)=before_count from public.import_jobs),'oversized request has no write');
+end $$;
+rollback;

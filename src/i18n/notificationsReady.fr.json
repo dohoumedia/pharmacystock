@@ -1,0 +1,94 @@
+{
+  "notificationsReady": {
+    "title": "Notifications",
+    "subtitle": "Suivi opérationnel des agences auxquelles vous avez accès.",
+    "all": "Toutes les notifications",
+    "unreadFilter": "Non lues",
+    "unread": "Non lue",
+    "read": "Lue",
+    "resolved": "Résolue / clôturée",
+    "markRead": "Marquer comme lue",
+    "markUnread": "Marquer comme non lue",
+    "markAll": "Tout marquer comme lu",
+    "refresh": "Actualiser",
+    "more": "Charger la suite",
+    "open": "Ouvrir le suivi",
+    "empty": "Aucune notification pour le moment.",
+    "emptyUnread": "Aucune notification non lue.",
+    "unreadCount": "Non lues : {{count}}",
+    "badge": "Alertes {{count}}",
+    "cachedBadge": "en cache",
+    "organizationWide": "Toute l’organisation",
+    "noAccess": "L’accès aux notifications est indisponible.",
+    "onlineRequired": "Connectez-vous avec des droits actualisés pour ouvrir les suivis ou modifier la lecture. Les suivis en cache peuvent ne plus être applicables.",
+    "failed": "Impossible d’actualiser ou d’enregistrer les notifications. Réessayez ; le dernier état peut être périmé.",
+    "disabled": "Les notifications dans l’application sont désactivées. L’historique reste disponible. Activez-les dans Paramètres pour recevoir les prochains suivis.",
+    "timing": "Les suivis sont actualisés à la navigation, au retour dans l’application, à la reconnexion et chaque minute tant que l’application est active. Ils reflètent la dernière vérification, pas une surveillance en temps réel.",
+    "remainingDays_one": "Expire dans {{count}} jour",
+    "remainingDays_other": "Expire dans {{count}} jours",
+    "expiredDays_one": "Périmé depuis {{count}} jour",
+    "expiredDays_other": "Périmé depuis {{count}} jours",
+    "closedAt": "Clôturée le {{date}}",
+    "invitationExpired": "Invitation expirée : vérifiez-la ou remplacez-la dans Personnel.",
+    "quantity": "Quantité disponible vendable : {{quantity}}",
+    "countLink": "Ouvrir le comptage demandé {{id}}",
+    "status": {
+      "ordered": "En attente de réception",
+      "partially_received": "Partiellement reçu",
+      "REQUESTED": "En attente d’approbation",
+      "APPROVED": "En attente d’expédition",
+      "DISPATCHED": "En attente de réception",
+      "QUARANTINED": "En quarantaine",
+      "RECALLED": "Rappelé"
+    },
+    "events": {
+      "LOW_STOCK": {
+        "category": "Stock",
+        "title": "Stock faible",
+        "body": "Vérifiez le stock et préparez le réapprovisionnement."
+      },
+      "OUT_OF_STOCK": {
+        "category": "Stock",
+        "title": "Rupture de stock vendable",
+        "body": "Vérifiez l’inventaire et réapprovisionnez le stock admissible."
+      },
+      "EXPIRY_ALERT": {
+        "category": "Péremption",
+        "title": "Suivi de péremption",
+        "body": "Vérifiez le lot dans la liste des péremptions."
+      },
+      "BATCH_ATTENTION": {
+        "category": "Sécurité du lot",
+        "title": "Lot à vérifier",
+        "body": "Vérifiez le stock en quarantaine ou rappelé et la prochaine action."
+      },
+      "PURCHASE_FOLLOWUP": {
+        "category": "Achats",
+        "title": "Commande en attente de réception",
+        "body": "Vérifiez la commande et les quantités restant à recevoir."
+      },
+      "TRANSFER_FOLLOWUP": {
+        "category": "Transferts",
+        "title": "Transfert à traiter",
+        "body": "Ouvrez le transfert pour effectuer la prochaine étape autorisée."
+      },
+      "COUNT_FOLLOWUP": {
+        "category": "Comptage",
+        "title": "Comptage physique en cours",
+        "body": "Terminez ou vérifiez le comptage physique ouvert."
+      },
+      "INVITATION_FOLLOWUP": {
+        "category": "Accès du personnel",
+        "title": "Suivi d’invitation du personnel",
+        "body": "Vérifiez l’invitation en attente dans Personnel. Aucun envoi externe n’est effectué."
+      },
+      "IMPORT_FAILED": {
+        "category": "Imports",
+        "title": "Import à vérifier",
+        "body": "Vérifiez les lignes rejetées dans Opérations avant de réessayer."
+      }
+    },
+    "notLoaded": "Aucune notification synchronisée disponible. Connectez-vous et actualisez.",
+    "unreadUnknown": "Nombre de notifications non lues indisponible"
+  }
+}
